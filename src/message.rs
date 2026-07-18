@@ -1,8 +1,16 @@
 use crate::tools::ToolCall;
 
 #[derive(Debug, Clone)]
+pub enum Role {
+    System,
+    User,
+    Assistant,
+    Tool,
+}
+
+#[derive(Debug, Clone)]
 pub struct Message {
-    pub role: String,
+    pub role: Role,
     pub content: String,
     pub tool_calls: Vec<ToolCall>,
     pub tool_call_id: Option<String>,
@@ -30,7 +38,7 @@ impl Conversation {
 
     fn init_system_prompt(&mut self) {
         self.messages.push(Message {
-            role: "system".to_string(),
+            role: Role::System,
             content: self.system_message.clone(),
             tool_calls: Vec::new(),
             tool_call_id: None,
@@ -38,9 +46,9 @@ impl Conversation {
         self.trim_history();
     }
 
-    pub fn add_message(&mut self, role: &str, content: &str) {
+    pub fn add_message(&mut self, role: Role, content: &str) {
         self.messages.push(Message {
-            role: role.to_string(),
+            role,
             content: content.to_string(),
             tool_calls: Vec::new(),
             tool_call_id: None,
@@ -50,7 +58,7 @@ impl Conversation {
 
     pub fn add_assistant_message(&mut self, content: &str, tool_calls: Vec<ToolCall>) {
         self.messages.push(Message {
-            role: "assistant".to_string(),
+            role: Role::Assistant,
             content: content.to_string(),
             tool_calls,
             tool_call_id: None,
@@ -60,7 +68,7 @@ impl Conversation {
 
     pub fn add_tool_message(&mut self, tool_call_id: &str, content: &str) {
         self.messages.push(Message {
-            role: "tool".to_string(),
+            role: Role::Tool,
             content: content.to_string(),
             tool_calls: Vec::new(),
             tool_call_id: Some(tool_call_id.to_string()),

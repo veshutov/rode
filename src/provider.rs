@@ -1,6 +1,5 @@
 use crate::{
-    message::{Conversation, Message},
-    tools::{Tool, ToolCall, ToolRegistry},
+    message::{Conversation, Message, Role}, tools::{Tool, ToolCall, ToolRegistry},
 };
 use anyhow::Result;
 use async_openai::types::chat::{
@@ -35,20 +34,22 @@ fn build_request(
         .get_messages()
         .iter()
         .map(|msg| -> Result<ChatCompletionRequestMessage> {
-            let m = match msg.role.as_str() {
-                "system" => ChatCompletionRequestMessage::System(
+            let m = match msg.role {
+                Role::System => ChatCompletionRequestMessage::System(
                     ChatCompletionRequestSystemMessageArgs::default()
                         .content(msg.content.clone())
                         .build()?,
                 ),
-                "user" => ChatCompletionRequestMessage::User(
+                Role::User => ChatCompletionRequestMessage::User(
                     ChatCompletionRequestUserMessageArgs::default()
                         .content(msg.content.clone())
                         .build()?,
                 ),
-                "assistant" => {
+                Role::Assistant => {
                     let mut args = ChatCompletionRequestAssistantMessageArgs::default();
-                    args.content(msg.content.clone());
+                    if !msg.content.is_empty() {
+                        args.content(msg.content.clone());
+                    }
                     if !msg.tool_calls.is_empty() {
                         let tool_calls: Vec<ChatCompletionMessageToolCalls> = msg
                             .tool_calls
@@ -69,15 +70,10 @@ fn build_request(
                     }
                     ChatCompletionRequestMessage::Assistant(args.build()?)
                 }
-                "tool" => ChatCompletionRequestMessage::Tool(
+                Role::Tool => ChatCompletionRequestMessage::Tool(
                     ChatCompletionRequestToolMessageArgs::default()
                         .content(msg.content.clone())
                         .tool_call_id(msg.tool_call_id.clone().unwrap_or_default())
-                        .build()?,
-                ),
-                _ => ChatCompletionRequestMessage::User(
-                    ChatCompletionRequestUserMessageArgs::default()
-                        .content(msg.content.clone())
                         .build()?,
                 ),
             };
@@ -151,7 +147,7 @@ pub async fn stream_openai_api(
     tool_calls.retain(|tc| !tc.id.is_empty());
 
     Ok(Message {
-        role: "assistant".to_string(),
+        role: Role::Assistant,
         content,
         tool_calls,
         tool_call_id: None,
@@ -161,30 +157,30 @@ pub async fn stream_openai_api(
 fn to_openai_tool(tool: &Box<dyn Tool>) -> ChatCompletionTools {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
-    for p in tool.parameters() {
+    for param in tool.parameters() {
         properties.insert(
-            p.name.clone(),
+            param.name.clone(),
             json!({
-                "type": p.r#type,
-                "description": p.description,
+                "type": param.r#type,
+                "description": param.description,
             }),
         );
-        if p.required {
-            required.push(p.name.clone());
+        if param.required {
+            required.push(param.name.clone());
         }
     }
-    let mut schema = serde_json::Map::new();
-    schema.insert("type".to_string(), json!("object"));
-    schema.insert("properties".to_string(), json!(properties));
+    let mut parameters = serde_json::Map::new();
+    parameters.insert("type".to_string(), json!("object"));
+    parameters.insert("properties".to_string(), json!(properties));
     if !required.is_empty() {
-        schema.insert("required".to_string(), json!(required));
+        parameters.insert("required".to_string(), json!(required));
     }
 
     ChatCompletionTools::Function(ChatCompletionTool {
         function: FunctionObjectArgs::default()
             .name(tool.name().to_owned())
             .description(tool.description().to_owned())
-            .parameters(serde_json::Value::Object(schema))
+            .parameters(serde_json::Value::Object(parameters))
             .build()
             .unwrap(),
     })

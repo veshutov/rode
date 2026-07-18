@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossterm::{ExecutableCommand, cursor, terminal};
 use std::io::{self, Write};
 
-use crate::message::{Conversation, Message};
+use crate::message::{Conversation, Message, Role};
 use crate::{
     provider::stream_openai_api,
     render::print_markdown,
@@ -50,33 +50,7 @@ pub async fn handle_streaming_turn(
     conversation: &mut Conversation,
     tool_registry: &ToolRegistry,
 ) -> Result<()> {
-    // Stream the assistant response
-    let mut assistant_content = String::new();
-    print!("{}[Assistant]: {}{}", AGENT_COLOR, RESET, " ");
-    io::stdout().flush()?;
-
-    // Save cursor position right after the prefix so we can restore here later
-    let mut stdout = io::stdout();
-    stdout.execute(cursor::SavePosition)?;
-
-    let mut response = process_message_streaming(input, conversation, tool_registry, |token| {
-        assistant_content.push_str(token);
-        if !token.trim().is_empty() {
-            print!("{}", token);
-            io::stdout().flush().unwrap();
-        }
-    })
-    .await?;
-
-    // If no tool calls, restore to saved position, clear everything below,
-    // and render the final markdown nicely
-    if response.tool_calls.is_empty() {
-        stdout.execute(cursor::RestorePosition)?;
-        stdout.execute(terminal::Clear(terminal::ClearType::FromCursorDown))?;
-        print_markdown(&assistant_content);
-    } else {
-        println!();
-    }
+    let mut response = stream_response(Some(input), conversation, tool_registry).await?;
 
     // Handle tool calls if any
     loop {
@@ -99,68 +73,49 @@ pub async fn handle_streaming_turn(
             },
         );
 
-        // Stream follow-up after tool execution
-        assistant_content.clear();
-        print!("{}[Assistant]: {}{}", AGENT_COLOR, RESET, " ");
-        io::stdout().flush()?;
-        stdout.execute(cursor::SavePosition)?;
-
-        response = stream_assistant_response(conversation, tool_registry, |token| {
-            assistant_content.push_str(token);
-            if !token.trim().is_empty() {
-                print!("{}", token);
-                io::stdout().flush().unwrap();
-            }
-        })
-        .await?;
-
-        if response.tool_calls.is_empty() {
-            stdout.execute(cursor::RestorePosition)?;
-            stdout.execute(terminal::Clear(terminal::ClearType::FromCursorDown))?;
-            print_markdown(&assistant_content);
-        } else {
-            println!();
-        }
+        response = stream_response(None, conversation, tool_registry).await?;
     }
 
     Ok(())
 }
 
-/// Process a message with streaming support. The on_token callback is called for each token.
-/// Returns the final assistant message (including any tool calls).
-pub async fn process_message_streaming(
-    message: &str,
+/// Stream a response from the assistant.
+/// If `user_message` is Some, it will be added to the conversation before streaming.
+/// If None, it streams a follow-up response (e.g. after tool execution).
+async fn stream_response(
+    user_message: Option<&str>,
     conversation: &mut Conversation,
     tool_registry: &ToolRegistry,
-    mut on_token: impl FnMut(&str),
 ) -> Result<Message> {
-    conversation.add_message("user", message);
+    if let Some(msg) = user_message {
+        conversation.add_message(Role::User, msg);
+    }
+
+    let mut assistant_content = String::new();
+    print!("{}[Assistant]: {}{}", AGENT_COLOR, RESET, " ");
+    io::stdout().flush()?;
+
+    let mut stdout = io::stdout();
+    stdout.execute(cursor::SavePosition)?;
 
     let response = stream_openai_api(conversation, tool_registry, |token| {
-        on_token(token);
+        assistant_content.push_str(token);
+        if !token.trim().is_empty() {
+            print!("{}", token);
+            io::stdout().flush().unwrap();
+        }
     })
     .await?;
 
-    // Add the assistant message to conversation
     conversation.add_assistant_message(&response.content, response.tool_calls.clone());
 
-    Ok(response)
-}
-
-/// Stream an assistant response without adding a user message.
-/// Use this for follow-up after tool execution.
-pub async fn stream_assistant_response(
-    conversation: &mut Conversation,
-    tool_registry: &ToolRegistry,
-    mut on_token: impl FnMut(&str),
-) -> Result<Message> {
-    let response = stream_openai_api(conversation, tool_registry, |token| {
-        on_token(token);
-    })
-    .await?;
-
-    // Add the assistant message to conversation
-    conversation.add_assistant_message(&response.content, response.tool_calls.clone());
+    if response.tool_calls.is_empty() {
+        stdout.execute(cursor::RestorePosition)?;
+        stdout.execute(terminal::Clear(terminal::ClearType::FromCursorDown))?;
+        print_markdown(&assistant_content);
+    } else {
+        println!();
+    }
 
     Ok(response)
 }
