@@ -1,31 +1,35 @@
-use crate::chat::{Conversation, process_message};
 use anyhow::Result;
 use std::io::{self, Write};
 
-mod chat;
+use crate::message::{Conversation, process_message};
+use crate::tools::{
+    ToolRegistry, bash::BashTool, edit_file::EditFileTool, read_file::ReadFileTool,
+    write_file::WriteFileTool,
+};
+
+mod message;
 mod provider;
-mod tool;
+mod render;
+mod tools;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut conversation = Conversation::new(20);
-    conversation.add_message(
-        "system",
-        "You are a helpful AI assistant with access to bash, read_file, write_file, and edit_file tools. Use tools when needed. Respond concisely.",
-    );
+    let mut tool_registry = ToolRegistry::new();
+    tool_registry.register(Box::new(BashTool));
+    tool_registry.register(Box::new(ReadFileTool));
+    tool_registry.register(Box::new(WriteFileTool));
+    tool_registry.register(Box::new(EditFileTool));
 
-    println!("Minimal CLI Agent - Interactive Mode");
-    println!("Type 'exit' to quit, 'clear' to reset conversation\n");
+    let mut conversation = Conversation::new(20);
 
     loop {
-        print!("> ");
+        print!("You: ");
         io::stdout().flush()?;
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         let input = input.trim();
 
         if input.eq_ignore_ascii_case("exit") {
-            println!("Goodbye!");
             break;
         }
 
@@ -40,7 +44,7 @@ async fn main() -> Result<()> {
         }
 
         if !input.is_empty() {
-            process_message(input, &mut conversation).await?;
+            process_message(input, &mut conversation, &tool_registry).await?;
         }
     }
 

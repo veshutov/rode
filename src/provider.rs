@@ -1,6 +1,6 @@
 use crate::{
-    chat::{Conversation, Message},
-    tool::{Tool, ToolCall, get_available_tools},
+    message::{Conversation, Message},
+    tools::{Tool, ToolCall, ToolRegistry},
 };
 use anyhow::Result;
 use async_openai::types::{
@@ -14,7 +14,10 @@ use dotenv::dotenv;
 use serde_json::json;
 use std::env;
 
-pub async fn call_openai_api(conversation: &Conversation) -> Result<Message> {
+pub async fn call_openai_api(
+    conversation: &Conversation,
+    tool_registry: &ToolRegistry,
+) -> Result<Message> {
     dotenv().ok();
     let api_key = env::var("RODE_API_KEY")
         .map_err(|_| anyhow::anyhow!("RODE_API_KEY not found in environment"))?;
@@ -82,9 +85,10 @@ pub async fn call_openai_api(conversation: &Conversation) -> Result<Message> {
         .model(&model)
         .messages(openai_messages)
         .tools(
-            get_available_tools()
+            tool_registry
+                .get_available_tools()
                 .into_iter()
-                .map(|t| to_openai_tool(&t))
+                .map(|t| to_openai_tool(t))
                 .collect::<Vec<_>>(),
         )
         .build()?;
@@ -113,10 +117,10 @@ pub async fn call_openai_api(conversation: &Conversation) -> Result<Message> {
     Ok(message)
 }
 
-pub fn to_openai_tool(tool: &Tool) -> ChatCompletionTool {
+fn to_openai_tool(tool: &Box<dyn Tool>) -> ChatCompletionTool {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
-    for p in &tool.parameters {
+    for p in tool.parameters() {
         properties.insert(
             p.name.clone(),
             json!({
@@ -139,8 +143,8 @@ pub fn to_openai_tool(tool: &Tool) -> ChatCompletionTool {
         .r#type(ChatCompletionToolType::Function)
         .function(
             FunctionObjectArgs::default()
-                .name(&tool.name)
-                .description(&tool.description)
+                .name(tool.name())
+                .description(tool.description())
                 .parameters(serde_json::Value::Object(schema))
                 .build()
                 .unwrap(),

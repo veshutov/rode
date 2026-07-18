@@ -1,5 +1,10 @@
-use crate::{provider::call_openai_api, tool::ToolCall};
 use anyhow::Result;
+
+use crate::{
+    provider::call_openai_api,
+    render::print_markdown,
+    tools::{ToolCall, ToolRegistry},
+};
 
 #[derive(Debug, Clone)]
 pub struct Message {
@@ -54,11 +59,16 @@ impl Conversation {
     }
 
     fn trim_history(&mut self) {
-        if self.messages.len() > self.max_history {
-            if self.messages.len() > 2 {
-                let drain_end = self.messages.len() - self.max_history + 1;
-                self.messages.drain(1..drain_end);
-            }
+        if self.messages.len() <= self.max_history {
+            return;
+        }
+
+        // Calculate how many to remove, keeping system message at index 0
+        let excess = self.messages.len() - self.max_history;
+        let drain_end = 1 + excess;
+
+        if drain_end > 1 && drain_end <= self.messages.len() {
+            self.messages.drain(1..drain_end);
         }
     }
 
@@ -71,32 +81,44 @@ impl Conversation {
     }
 }
 
-pub async fn process_message(message: &str, conversation: &mut Conversation) -> Result<()> {
+pub async fn process_message(
+    message: &str,
+    conversation: &mut Conversation,
+    tool_registry: &ToolRegistry,
+) -> Result<()> {
     conversation.add_message("user", message);
 
     loop {
-        match call_openai_api(conversation).await {
+        match call_openai_api(conversation, tool_registry).await {
             Ok(response) => {
                 if !response.tool_calls.is_empty() {
                     conversation
                         .add_assistant_message(&response.content, response.tool_calls.clone());
 
                     for tool_call in &response.tool_calls {
-                        let result = tool_call
-                            .execute()
+                        println!(
+                            "Executing tool: {} with args: {}",
+                            tool_call.name, tool_call.arguments
+                        );
+                        let result = tool_registry
+                            .execute(tool_call)
                             .unwrap_or_else(|e| format!("Error: {}", e));
-                        println!("[Tool {}]: {}", tool_call.name, tool_call.arguments);
+                        println!(
+                            "[Tool {}]: {}\n[Result]: {}",
+                            tool_call.name, tool_call.arguments, result
+                        );
                         conversation.add_tool_message(&tool_call.id, &result);
                     }
                     // Loop back to API so the model can see the results
                 } else {
-                    println!("[Assistant]: {}", response.content);
+                    println!("\n[Assistant]:");
+                    print_markdown(&response.content);
                     conversation.add_message("assistant", &response.content);
                     break;
                 }
             }
             Err(e) => {
-                eprintln!("Error calling OpenAI API: {}", e);
+                eprintln!("Error calling API: {}", e);
                 println!("[Assistant]: Sorry, I encountered an error processing your request.");
                 break;
             }
