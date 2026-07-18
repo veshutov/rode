@@ -8,26 +8,28 @@ use async_openai::types::chat::{
     ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
     ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs,
     ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionTools,
-    CreateChatCompletionRequestArgs, FunctionCall, FunctionObjectArgs,
+    CreateChatCompletionRequest, CreateChatCompletionRequestArgs, FunctionCall, FunctionObjectArgs,
 };
-use dotenv::dotenv;
+use futures::StreamExt;
 use serde_json::json;
 use std::env;
 
-pub async fn call_openai_api(
-    conversation: &Conversation,
-    tool_registry: &ToolRegistry,
-) -> Result<Message> {
-    dotenv().ok();
+fn build_client() -> Result<async_openai::Client<async_openai::config::OpenAIConfig>> {
     let api_key = env::var("RODE_API_KEY")
         .map_err(|_| anyhow::anyhow!("RODE_API_KEY not found in environment"))?;
     let url = env::var("URL").map_err(|_| anyhow::anyhow!("URL not found in environment"))?;
-    let model = env::var("MODEL").map_err(|_| anyhow::anyhow!("MODEL not found in environment"))?;
 
     let config = async_openai::config::OpenAIConfig::new()
         .with_api_key(api_key)
         .with_api_base(url);
-    let client = async_openai::Client::with_config(config);
+    Ok(async_openai::Client::with_config(config))
+}
+
+fn build_request(
+    conversation: &Conversation,
+    tool_registry: &ToolRegistry,
+) -> Result<CreateChatCompletionRequest> {
+    let model = env::var("MODEL").map_err(|_| anyhow::anyhow!("MODEL not found in environment"))?;
 
     let openai_messages: Result<Vec<ChatCompletionRequestMessage>> = conversation
         .get_messages()
@@ -84,8 +86,9 @@ pub async fn call_openai_api(
         .collect();
     let openai_messages = openai_messages?;
 
-    let request = CreateChatCompletionRequestArgs::default()
+    Ok(CreateChatCompletionRequestArgs::default()
         .model(&model)
+        .stream(true)
         .messages(openai_messages)
         .tools(
             tool_registry
@@ -94,30 +97,65 @@ pub async fn call_openai_api(
                 .map(|t| to_openai_tool(t))
                 .collect::<Vec<_>>(),
         )
-        .build()?;
+        .build()?)
+}
 
-    let response = client.chat().create(request).await?;
+/// Stream response tokens. Returns (full_content, tool_calls) when complete.
+pub async fn stream_openai_api(
+    conversation: &Conversation,
+    tool_registry: &ToolRegistry,
+    mut on_token: impl FnMut(&str),
+) -> Result<Message> {
+    let client = build_client()?;
+    let request = build_request(conversation, tool_registry)?;
 
-    let choice = response
-        .choices
-        .first()
-        .ok_or_else(|| anyhow::anyhow!("No response received"))?;
+    let mut stream = client.chat().create_stream(request).await?;
+    let mut content = String::new();
+    let mut tool_calls: Vec<ToolCall> = Vec::new();
+    let _current_tool_call: Option<ToolCall> = None;
 
-    let message = Message {
+    while let Some(result) = stream.next().await {
+        let response = result?;
+        if let Some(choice) = response.choices.first() {
+            if let Some(delta) = &choice.delta.content {
+                content.push_str(delta);
+                on_token(delta);
+            }
+            if let Some(tcs) = &choice.delta.tool_calls {
+                for tc in tcs {
+                    let idx = tc.index as usize;
+                    while tool_calls.len() <= idx {
+                        tool_calls.push(ToolCall {
+                            id: String::new(),
+                            name: String::new(),
+                            arguments: String::new(),
+                        });
+                    }
+                    if let Some(id) = &tc.id {
+                        tool_calls[idx].id = id.clone();
+                    }
+                    if let Some(function) = &tc.function {
+                        if let Some(name) = &function.name {
+                            tool_calls[idx].name = name.clone();
+                        }
+                        if let Some(args) = &function.arguments {
+                            tool_calls[idx].arguments.push_str(args);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Filter out empty tool calls
+    tool_calls.retain(|tc| !tc.id.is_empty());
+
+    Ok(Message {
         role: "assistant".to_string(),
-        content: choice.message.content.clone().unwrap_or_default(),
-        tool_calls: choice
-            .message
-            .tool_calls
-            .clone()
-            .unwrap_or_default()
-            .iter()
-            .map(|tc| tc.into())
-            .collect(),
+        content,
+        tool_calls,
         tool_call_id: None,
-    };
-
-    Ok(message)
+    })
 }
 
 fn to_openai_tool(tool: &Box<dyn Tool>) -> ChatCompletionTools {

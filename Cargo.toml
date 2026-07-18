@@ -15,6 +15,7 @@ serde_json = "1.0.150"
 termimad = "0.35.1"
 anyhow = "1.0.103"
 dotenv = "0.15.0"
+crossterm = "0.28.1"
 
 [[bin]]
 name = "rode"

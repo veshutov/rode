@@ -1,10 +1,4 @@
-use anyhow::Result;
-
-use crate::{
-    provider::call_openai_api,
-    render::print_markdown,
-    tools::{ToolCall, ToolRegistry},
-};
+use crate::tools::ToolCall;
 
 #[derive(Debug, Clone)]
 pub struct Message {
@@ -16,16 +10,32 @@ pub struct Message {
 
 #[derive(Debug, Clone)]
 pub struct Conversation {
+    system_message: String,
     messages: Vec<Message>,
     max_history: usize,
 }
 
 impl Conversation {
-    pub fn new(max_history: usize) -> Self {
+    pub fn new(system_message: String, max_history: usize) -> Self {
         Self {
+            system_message,
             messages: Vec::new(),
             max_history,
         }
+    }
+
+    pub fn init(&mut self) {
+        self.init_system_prompt();
+    }
+
+    fn init_system_prompt(&mut self) {
+        self.messages.push(Message {
+            role: "system".to_string(),
+            content: self.system_message.clone(),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+        });
+        self.trim_history();
     }
 
     pub fn add_message(&mut self, role: &str, content: &str) {
@@ -76,54 +86,8 @@ impl Conversation {
         &self.messages
     }
 
-    pub fn clear(&mut self) {
+    pub fn reset(&mut self) {
         self.messages.clear();
+        self.init_system_prompt();
     }
-}
-
-pub async fn process_message(
-    message: &str,
-    conversation: &mut Conversation,
-    tool_registry: &ToolRegistry,
-) -> Result<()> {
-    conversation.add_message("user", message);
-
-    loop {
-        match call_openai_api(conversation, tool_registry).await {
-            Ok(response) => {
-                if !response.tool_calls.is_empty() {
-                    conversation
-                        .add_assistant_message(&response.content, response.tool_calls.clone());
-
-                    for tool_call in &response.tool_calls {
-                        println!(
-                            "Executing tool: {} with args: {}",
-                            tool_call.name, tool_call.arguments
-                        );
-                        let result = tool_registry
-                            .execute(tool_call)
-                            .unwrap_or_else(|e| format!("Error: {}", e));
-                        println!(
-                            "[Tool {}]: {}\n[Result]: {}",
-                            tool_call.name, tool_call.arguments, result
-                        );
-                        conversation.add_tool_message(&tool_call.id, &result);
-                    }
-                    // Loop back to API so the model can see the results
-                } else {
-                    println!("\n[Assistant]:");
-                    print_markdown(&response.content);
-                    conversation.add_message("assistant", &response.content);
-                    break;
-                }
-            }
-            Err(e) => {
-                eprintln!("Error calling API: {}", e);
-                println!("[Assistant]: Sorry, I encountered an error processing your request.");
-                break;
-            }
-        }
-    }
-
-    Ok(())
 }

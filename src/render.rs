@@ -6,4 +6,5 @@ pub fn print_markdown(text: &str) {
     }
     let skin = MadSkin::default();
     skin.print_text(text);
+    println!();
 }
