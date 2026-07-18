@@ -1,6 +1,6 @@
 use crate::{
     chat::{Conversation, Message},
-    tool::{get_available_tools, Tool, ToolCall},
+    tool::{Tool, ToolCall, get_available_tools},
 };
 use anyhow::Result;
 use async_openai::types::{
@@ -16,8 +16,8 @@ use std::env;
 
 pub async fn call_openai_api(conversation: &Conversation) -> Result<Message> {
     dotenv().ok();
-    let api_key =
-        env::var("API_KEY").map_err(|_| anyhow::anyhow!("API_KEY not found in environment"))?;
+    let api_key = env::var("RODE_API_KEY")
+        .map_err(|_| anyhow::anyhow!("RODE_API_KEY not found in environment"))?;
     let url = env::var("URL").map_err(|_| anyhow::anyhow!("URL not found in environment"))?;
     let model = env::var("MODEL").map_err(|_| anyhow::anyhow!("MODEL not found in environment"))?;
 
