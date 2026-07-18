@@ -3,12 +3,12 @@ use crate::{
     tools::{Tool, ToolCall, ToolRegistry},
 };
 use anyhow::Result;
-use async_openai::types::{
-    ChatCompletionMessageToolCall, ChatCompletionRequestAssistantMessageArgs,
-    ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
-    ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionTool,
-    ChatCompletionToolArgs, ChatCompletionToolType, CreateChatCompletionRequestArgs, FunctionCall,
-    FunctionObjectArgs,
+use async_openai::types::chat::{
+    ChatCompletionMessageToolCall, ChatCompletionMessageToolCalls,
+    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
+    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs,
+    ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionTools,
+    CreateChatCompletionRequestArgs, FunctionCall, FunctionObjectArgs,
 };
 use dotenv::dotenv;
 use serde_json::json;
@@ -48,16 +48,19 @@ pub async fn call_openai_api(
                     let mut args = ChatCompletionRequestAssistantMessageArgs::default();
                     args.content(msg.content.clone());
                     if !msg.tool_calls.is_empty() {
-                        let tool_calls: Vec<ChatCompletionMessageToolCall> = msg
+                        let tool_calls: Vec<ChatCompletionMessageToolCalls> = msg
                             .tool_calls
                             .iter()
-                            .map(|tc| ChatCompletionMessageToolCall {
-                                id: tc.id.clone(),
-                                r#type: ChatCompletionToolType::Function,
-                                function: FunctionCall {
-                                    name: tc.name.clone(),
-                                    arguments: tc.arguments.clone(),
-                                },
+                            .map(|tc| {
+                                ChatCompletionMessageToolCalls::Function(
+                                    ChatCompletionMessageToolCall {
+                                        id: tc.id.clone(),
+                                        function: FunctionCall {
+                                            name: tc.name.clone(),
+                                            arguments: tc.arguments.clone(),
+                                        },
+                                    },
+                                )
                             })
                             .collect();
                         args.tool_calls(tool_calls);
@@ -117,7 +120,7 @@ pub async fn call_openai_api(
     Ok(message)
 }
 
-fn to_openai_tool(tool: &Box<dyn Tool>) -> ChatCompletionTool {
+fn to_openai_tool(tool: &Box<dyn Tool>) -> ChatCompletionTools {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
     for p in tool.parameters() {
@@ -139,26 +142,27 @@ fn to_openai_tool(tool: &Box<dyn Tool>) -> ChatCompletionTool {
         schema.insert("required".to_string(), json!(required));
     }
 
-    ChatCompletionToolArgs::default()
-        .r#type(ChatCompletionToolType::Function)
-        .function(
-            FunctionObjectArgs::default()
-                .name(tool.name())
-                .description(tool.description())
-                .parameters(serde_json::Value::Object(schema))
-                .build()
-                .unwrap(),
-        )
-        .build()
-        .unwrap()
+    ChatCompletionTools::Function(ChatCompletionTool {
+        function: FunctionObjectArgs::default()
+            .name(tool.name().to_owned())
+            .description(tool.description().to_owned())
+            .parameters(serde_json::Value::Object(schema))
+            .build()
+            .unwrap(),
+    })
 }
 
-impl From<&ChatCompletionMessageToolCall> for ToolCall {
-    fn from(value: &ChatCompletionMessageToolCall) -> Self {
-        ToolCall {
-            id: value.id.clone(),
-            name: value.function.name.clone(),
-            arguments: value.function.arguments.clone(),
+impl From<&ChatCompletionMessageToolCalls> for ToolCall {
+    fn from(value: &ChatCompletionMessageToolCalls) -> Self {
+        match value {
+            ChatCompletionMessageToolCalls::Function(tool_call) => ToolCall {
+                id: tool_call.id.clone(),
+                name: tool_call.function.name.clone(),
+                arguments: tool_call.function.arguments.clone(),
+            },
+            ChatCompletionMessageToolCalls::Custom(_) => {
+                todo!()
+            }
         }
     }
 }
