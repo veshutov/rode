@@ -29,8 +29,15 @@ impl Tool for BashTool {
             .ok_or_else(|| anyhow::anyhow!("Missing 'command' argument"))?;
 
         let dangerous_patterns = [
-            "rm -rf", "rm -fr", ":(){ :|:& };:", "mkfs.", "dd if=", "> /dev/sda",
-            "mv / ", "mv /* ", "chmod -R 000 /",
+            "rm -rf",
+            "rm -fr",
+            ":(){ :|:& };:",
+            "mkfs.",
+            "dd if=",
+            "> /dev/sda",
+            "mv / ",
+            "mv /* ",
+            "chmod -R 000 /",
         ];
 
         let lower_cmd = command.to_lowercase();

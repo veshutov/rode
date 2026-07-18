@@ -9,11 +9,17 @@ use crate::{
     tools::{ToolCall, ToolRegistry},
 };
 
+const USER_COLOR: &str = "\x1b[38;2;163;217;170m"; // Mint Green (#A3D9AA)
+const AGENT_COLOR: &str = "\x1b[38;2;187;154;247m"; // Lavender (#BB9AF7)
+const TOOL_COLOR: &str = "\x1b[38;2;255;158;100m"; // Peach/Orange (#FF9E64)
+
+const RESET: &str = "\x1b[0m";
+
 pub async fn run(mut conversation: Conversation, tool_registry: ToolRegistry) -> Result<()> {
     println!("Rode CLI - Type your message or 'exit' to quit, 'clear' to reset history");
 
     loop {
-        print!("[You]: ");
+        print!("{}[You]: {}{}", USER_COLOR, RESET, " ");
         io::stdout().flush()?;
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
@@ -46,7 +52,7 @@ pub async fn handle_streaming_turn(
 ) -> Result<()> {
     // Stream the assistant response
     let mut assistant_content = String::new();
-    print!("[Assistant]: ");
+    print!("{}[Assistant]: {}{}", AGENT_COLOR, RESET, " ");
     io::stdout().flush()?;
 
     // Save cursor position right after the prefix so we can restore here later
@@ -84,16 +90,18 @@ pub async fn handle_streaming_turn(
             tool_registry,
             |name, args| {
                 println!(
-                    "[Tool {}]: {}",
+                    "{}[Tool {}]: {}{}",
+                    TOOL_COLOR,
                     name,
-                    args.trim().chars().take(50).collect::<String>()
+                    args.trim().chars().take(50).collect::<String>(),
+                    RESET
                 );
             },
         );
 
         // Stream follow-up after tool execution
         assistant_content.clear();
-        print!("[Assistant]: ");
+        print!("{}[Assistant]: {}{}", AGENT_COLOR, RESET, " ");
         io::stdout().flush()?;
         stdout.execute(cursor::SavePosition)?;
 

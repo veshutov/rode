@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde_json::Value;
+use std::collections::HashMap;
 
 pub mod bash;
 pub mod edit_file;
@@ -29,27 +30,23 @@ pub struct ToolCall {
 }
 
 pub struct ToolRegistry {
-    tools: Vec<Box<dyn Tool>>,
+    tools: HashMap<String, Box<dyn Tool>>,
 }
 
 impl ToolRegistry {
     pub fn new() -> Self {
-        Self { tools: Vec::new() }
+        Self {
+            tools: HashMap::new(),
+        }
     }
 
     pub fn register(&mut self, tool: Box<dyn Tool>) {
-        self.tools.push(tool);
+        let name = tool.name().to_string();
+        self.tools.insert(name, tool);
     }
 
-    // pub fn execute(&self, name: &str, args: Value) -> Result<String> {
-    //     match self.tools.iter().find(|t| t.name() == name) {
-    //         Some(tool) => tool.execute(args),
-    //         None => Err(anyhow::anyhow!("Tool '{}' not found", name)),
-    //     }
-    // }
-
     pub fn execute(&self, tool_call: &ToolCall) -> Result<String> {
-        match self.tools.iter().find(|t| t.name() == tool_call.name) {
+        match self.tools.get(&tool_call.name) {
             Some(tool) => {
                 let args: Value = serde_json::from_str(&tool_call.arguments)?;
                 tool.execute(args)
@@ -58,7 +55,7 @@ impl ToolRegistry {
         }
     }
 
-    pub fn get_available_tools(&self) -> &Vec<Box<dyn Tool>> {
-        &self.tools
+    pub fn get_available_tools(&self) -> Vec<&Box<dyn Tool>> {
+        self.tools.values().collect()
     }
 }
