@@ -16,6 +16,8 @@ termimad = "0.35.1"
 anyhow = "1.0.103"
 dotenv = "0.15.0"
 crossterm = "0.28.1"
+ratatui = "0.29.0"
+ansi-to-tui = "7.0.0"
 
 [[bin]]
 name = "rode"

@@ -94,8 +94,4 @@ impl Conversation {
         &self.messages
     }
 
-    pub fn reset(&mut self) {
-        self.messages.clear();
-        self.init_system_prompt();
-    }
 }

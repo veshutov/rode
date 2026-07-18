@@ -1,6 +1,7 @@
 use anyhow::Result;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub mod bash;
 pub mod edit_file;
@@ -29,8 +30,9 @@ pub struct ToolCall {
     pub arguments: String,
 }
 
+#[derive(Clone)]
 pub struct ToolRegistry {
-    tools: HashMap<String, Box<dyn Tool>>,
+    tools: HashMap<String, Arc<dyn Tool>>,
 }
 
 impl ToolRegistry {
@@ -40,7 +42,7 @@ impl ToolRegistry {
         }
     }
 
-    pub fn register(&mut self, tool: Box<dyn Tool>) {
+    pub fn register(&mut self, tool: Arc<dyn Tool>) {
         let name = tool.name().to_string();
         self.tools.insert(name, tool);
     }
@@ -55,7 +57,7 @@ impl ToolRegistry {
         }
     }
 
-    pub fn get_available_tools(&self) -> Vec<&Box<dyn Tool>> {
+    pub fn get_available_tools(&self) -> Vec<&Arc<dyn Tool>> {
         self.tools.values().collect()
     }
 }

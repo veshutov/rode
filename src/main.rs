@@ -7,6 +7,7 @@ use crate::tools::{
     write_file::WriteFileTool,
 };
 
+mod app;
 mod message;
 mod provider;
 mod render;
@@ -18,12 +19,13 @@ async fn main() -> Result<()> {
     dotenv().ok();
 
     let mut tool_registry = ToolRegistry::new();
-    tool_registry.register(Box::new(BashTool));
-    tool_registry.register(Box::new(ReadFileTool));
-    tool_registry.register(Box::new(WriteFileTool));
-    tool_registry.register(Box::new(EditFileTool));
+    tool_registry.register(std::sync::Arc::new(BashTool));
+    tool_registry.register(std::sync::Arc::new(ReadFileTool));
+    tool_registry.register(std::sync::Arc::new(WriteFileTool));
+    tool_registry.register(std::sync::Arc::new(EditFileTool));
 
-    let system_message = "You are a coding agent. Respond concisely.";
+    let system_message =
+        "You are a coding agent. Project directory = current directory. Respond concisely.";
     let mut conversation = Conversation::new(system_message.to_string(), 20);
     conversation.init();
 

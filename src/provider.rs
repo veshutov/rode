@@ -154,7 +154,7 @@ pub async fn stream_openai_api(
     })
 }
 
-fn to_openai_tool(tool: &Box<dyn Tool>) -> ChatCompletionTools {
+fn to_openai_tool(tool: &std::sync::Arc<dyn Tool>) -> ChatCompletionTools {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
     for param in tool.parameters() {
