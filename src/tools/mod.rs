@@ -24,6 +24,13 @@ pub struct ToolParameter {
 }
 
 #[derive(Debug, Clone)]
+pub struct ToolInfo {
+    pub name: String,
+    pub description: String,
+    pub parameters: Vec<ToolParameter>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
@@ -57,7 +64,14 @@ impl ToolRegistry {
         }
     }
 
-    pub fn get_available_tools(&self) -> Vec<&Arc<dyn Tool>> {
-        self.tools.values().collect()
+    pub fn available_tools(&self) -> Vec<ToolInfo> {
+        self.tools
+            .values()
+            .map(|tool| ToolInfo {
+                name: tool.name().to_string(),
+                description: tool.description().to_string(),
+                parameters: tool.parameters(),
+            })
+            .collect()
     }
 }

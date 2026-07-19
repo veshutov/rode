@@ -1,6 +1,6 @@
 use crate::{
     message::{Conversation, Message, Role},
-    tools::{Tool, ToolCall, ToolRegistry},
+    tools::{ToolCall, ToolInfo, ToolRegistry},
 };
 use anyhow::Result;
 use async_openai::types::chat::{
@@ -153,44 +153,46 @@ fn build_request(
         .messages(openai_messages)
         .tools(
             tool_registry
-                .get_available_tools()
-                .into_iter()
-                .map(|t| to_openai_tool(t))
+                .available_tools()
+                .iter()
+                .map(|tool| tool.into())
                 .collect::<Vec<_>>(),
         )
         .build()?)
 }
 
-fn to_openai_tool(tool: &std::sync::Arc<dyn Tool>) -> ChatCompletionTools {
-    let mut properties = serde_json::Map::new();
-    let mut required = Vec::new();
-    for param in tool.parameters() {
-        properties.insert(
-            param.name.clone(),
-            json!({
-                "type": param.r#type,
-                "description": param.description,
-            }),
-        );
-        if param.required {
-            required.push(param.name.clone());
+impl Into<ChatCompletionTools> for &ToolInfo {
+    fn into(self) -> ChatCompletionTools {
+        let mut properties = serde_json::Map::new();
+        let mut required = Vec::new();
+        for param in &self.parameters {
+            properties.insert(
+                param.name.clone(),
+                json!({
+                    "type": param.r#type,
+                    "description": param.description,
+                }),
+            );
+            if param.required {
+                required.push(param.name.clone());
+            }
         }
-    }
-    let mut parameters = serde_json::Map::new();
-    parameters.insert("type".to_string(), json!("object"));
-    parameters.insert("properties".to_string(), json!(properties));
-    if !required.is_empty() {
-        parameters.insert("required".to_string(), json!(required));
-    }
+        let mut parameters = serde_json::Map::new();
+        parameters.insert("type".to_string(), json!("object"));
+        parameters.insert("properties".to_string(), json!(properties));
+        if !required.is_empty() {
+            parameters.insert("required".to_string(), json!(required));
+        }
 
-    ChatCompletionTools::Function(ChatCompletionTool {
-        function: FunctionObjectArgs::default()
-            .name(tool.name().to_owned())
-            .description(tool.description().to_owned())
-            .parameters(serde_json::Value::Object(parameters))
-            .build()
-            .unwrap(),
-    })
+        ChatCompletionTools::Function(ChatCompletionTool {
+            function: FunctionObjectArgs::default()
+                .name(self.name.clone())
+                .description(self.description.clone())
+                .parameters(serde_json::Value::Object(parameters))
+                .build()
+                .unwrap(),
+        })
+    }
 }
 
 impl From<&ChatCompletionMessageToolCalls> for ToolCall {
