@@ -2,6 +2,8 @@ use crate::message::{Conversation, Message, Role};
 use crate::provider;
 use crate::tools::ToolRegistry;
 use ratatui::text::Line;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 #[derive(Debug)]
@@ -27,6 +29,7 @@ pub struct AppState {
     pub current_response: String,
     pub render_cache: Vec<MessageCache>,
     event_tx: Sender<LLMEvent>,
+    pub cancelled: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -44,6 +47,7 @@ impl AppState {
             current_response: String::new(),
             render_cache: Vec::new(),
             event_tx,
+            cancelled: Arc::new(AtomicBool::new(false)),
         };
         (state, event_rx)
     }
@@ -58,14 +62,16 @@ impl AppState {
         self.streaming = true;
         self.auto_scroll = true;
         self.current_response.clear();
+        self.cancelled.store(false, Ordering::SeqCst);
         let conv = self.conversation.clone();
         let registry = self.tool_registry.clone();
         let tx = self.event_tx.clone();
 
+        let cancelled = self.cancelled.clone();
         tokio::spawn(async move {
             let result = provider::stream_openai_api(&conv, &registry, |token| {
                 let _ = tx.send(LLMEvent::Token(token.to_string()));
-            })
+            }, cancelled)
             .await;
 
             match result {
@@ -130,6 +136,12 @@ impl AppState {
 
     pub fn scroll_to_end(&mut self) {
         self.auto_scroll = true;
+    }
+
+    pub fn cancel(&mut self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        self.streaming = false;
+        self.current_response.clear();
     }
 
     pub fn clear(&mut self) {

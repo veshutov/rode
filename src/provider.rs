@@ -13,12 +13,15 @@ use async_openai::types::chat::{
 use futures::StreamExt;
 use serde_json::json;
 use std::env;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Stream response tokens. Returns (full_content, tool_calls) when complete.
 pub async fn stream_openai_api(
     conversation: &Conversation,
     tool_registry: &ToolRegistry,
     mut on_token: impl FnMut(&str),
+    cancelled: Arc<AtomicBool>,
 ) -> Result<Message> {
     let client = build_client()?;
     let request = build_request(conversation, tool_registry)?;
@@ -29,6 +32,9 @@ pub async fn stream_openai_api(
     let _current_tool_call: Option<ToolCall> = None;
 
     while let Some(result) = stream.next().await {
+        if cancelled.load(Ordering::SeqCst) {
+            break;
+        }
         let response = result?;
         if let Some(choice) = response.choices.first() {
             if let Some(delta) = &choice.delta.content {

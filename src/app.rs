@@ -66,7 +66,11 @@ impl App {
         match key.code {
             KeyCode::Esc => return Ok(true),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                return Ok(true);
+                if self.state.streaming {
+                    self.state.cancel();
+                } else {
+                    return Ok(true);
+                }
             }
             KeyCode::Enter => {
                 if key.modifiers.contains(KeyModifiers::SHIFT)
