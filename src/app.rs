@@ -1,7 +1,7 @@
 use crate::input::InputBuffer;
 use crate::state::{AppState, LLMEvent};
 use crate::ui;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Terminal;
 use std::time::Duration;
 
@@ -40,15 +40,15 @@ impl App {
                             }
                         }
                     }
-                    Event::Mouse(mouse) => match mouse.kind {
-                        MouseEventKind::ScrollUp => {
-                            self.state.scroll_up();
+                    Event::Paste(text) => {
+                        for ch in text.chars() {
+                            if ch == '\n' {
+                                self.input.insert_newline();
+                            } else {
+                                self.input.insert(ch);
+                            }
                         }
-                        MouseEventKind::ScrollDown => {
-                            self.state.scroll_down();
-                        }
-                        _ => {}
-                    },
+                    }
                     _ => {}
                 }
             }

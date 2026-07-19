@@ -1,13 +1,12 @@
 use anyhow::Result;
 use crossterm::{
     ExecutableCommand,
-    event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use dotenv::dotenv;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use std::io;
+use std::io::{self, Write};
 
 use crate::app::App;
 use crate::message::Conversation;
@@ -49,7 +48,9 @@ pub async fn run(conversation: Conversation, tool_registry: ToolRegistry) -> Res
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     stdout.execute(EnterAlternateScreen)?;
-    stdout.execute(EnableMouseCapture)?;
+    // Enable bracketed paste so multi-line pastes are received as single events
+    stdout.write_all(b"\x1b[?2004h")?;
+    stdout.flush()?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -57,8 +58,9 @@ pub async fn run(conversation: Conversation, tool_registry: ToolRegistry) -> Res
     let result = app.run(&mut terminal, &event_rx);
 
     disable_raw_mode()?;
-    terminal.backend_mut().execute(DisableMouseCapture)?;
-    terminal.backend_mut().execute(LeaveAlternateScreen)?;
+    let stdout = terminal.backend_mut();
+    stdout.write_all(b"\x1b[?2004l")?; // disable bracketed paste
+    stdout.execute(LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     result
