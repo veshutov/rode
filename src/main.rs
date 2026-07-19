@@ -1,6 +1,14 @@
 use anyhow::Result;
+use crossterm::{
+    ExecutableCommand,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
 use dotenv::dotenv;
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
+use std::io;
 
+use crate::app::App;
 use crate::message::Conversation;
 use crate::tools::{
     ToolRegistry, bash::BashTool, edit_file::EditFileTool, read_file::ReadFileTool,
@@ -10,8 +18,6 @@ use crate::tools::{
 mod app;
 mod message;
 mod provider;
-mod render;
-mod repl;
 mod tools;
 
 #[tokio::main]
@@ -29,7 +35,24 @@ async fn main() -> Result<()> {
     let mut conversation = Conversation::new(system_message.to_string(), 20);
     conversation.init();
 
-    repl::run(conversation, tool_registry).await?;
+    run(conversation, tool_registry).await?;
 
     Ok(())
+}
+
+pub async fn run(conversation: Conversation, tool_registry: ToolRegistry) -> Result<()> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    stdout.execute(EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut app = App::new(conversation, tool_registry);
+    let result = app.run(&mut terminal);
+
+    disable_raw_mode()?;
+    terminal.backend_mut().execute(LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    result
 }

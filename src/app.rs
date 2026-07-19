@@ -1,7 +1,7 @@
 use crate::message::{Conversation, Message, Role};
 use crate::provider;
-use crate::render::render_markdown;
 use crate::tools::ToolRegistry;
+use ansi_to_tui::IntoText;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
@@ -12,6 +12,7 @@ use ratatui::{
 };
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Duration;
+use termimad::MadSkin;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 enum LLMEvent {
@@ -245,18 +246,24 @@ impl App {
                     lines.push(Line::from(""));
                 }
                 Role::Assistant => {
-                    let rendered = render_markdown(&msg.content);
-                    lines.extend(rendered.lines);
+                    let rendered = render_markdown(&msg.content.trim_start());
+                    for mut line in rendered.lines {
+                        line.spans.insert(0, Span::raw("  "));
+                        lines.push(line);
+                    }
                     if !msg.tool_calls.is_empty() {
                         for tc in &msg.tool_calls {
-                            lines.push(Line::from(Span::styled(
-                                format!(
-                                    "{}: {}",
-                                    tc.name,
-                                    tc.arguments.chars().take(40).collect::<String>()
+                            lines.push(Line::from(vec![
+                                Span::raw("  "),
+                                Span::styled(
+                                    format!(
+                                        "{}: {}",
+                                        tc.name,
+                                        tc.arguments.chars().take(40).collect::<String>()
+                                    ),
+                                    Style::default().fg(Color::Yellow),
                                 ),
-                                Style::default().fg(Color::Yellow),
-                            )));
+                            ]));
                         }
                     }
                     lines.push(Line::from(""));
@@ -266,8 +273,11 @@ impl App {
         }
 
         if self.streaming && !self.current_response.is_empty() {
-            let rendered = render_markdown(&self.current_response);
-            lines.extend(rendered.lines);
+            let rendered = render_markdown(&self.current_response.trim_start());
+            for mut line in rendered.lines {
+                line.spans.insert(0, Span::raw("  "));
+                lines.push(line);
+            }
         }
 
         let visible_height = chat_area.height;
@@ -377,4 +387,16 @@ fn wrap_hard(text: &str, width: usize) -> Vec<String> {
         }
     }
     lines
+}
+
+pub fn render_markdown(text: &str) -> Text<'static> {
+    if text.trim().is_empty() {
+        return Text::default();
+    }
+    let skin = MadSkin::default();
+    let ct = skin.term_text(text);
+    let ansi_string = format!("{}", ct);
+    ansi_string
+        .into_text()
+        .unwrap_or_else(|_| Text::from(text.to_string()))
 }

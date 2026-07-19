@@ -93,5 +93,4 @@ impl Conversation {
     pub fn get_messages(&self) -> &[Message] {
         &self.messages
     }
-
 }
