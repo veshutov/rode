@@ -48,6 +48,7 @@ impl App {
                                 self.state.submit_user_message(&content);
                             }
                         }
+                        TUIEvent::Exit() => return Ok(()),
                     }
                 }
             }

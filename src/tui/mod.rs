@@ -18,6 +18,7 @@ mod utils;
 
 pub enum TUIEvent {
     Submit(String),
+    Exit(),
 }
 
 pub struct TUI {
@@ -58,6 +59,7 @@ impl TUI {
 
     fn handle_key(&mut self, key: &KeyEvent, streaming: bool) -> Option<TUIEvent> {
         match key.code {
+            KeyCode::Esc => return Some(TUIEvent::Exit()),
             KeyCode::Enter => {
                 if key.modifiers.contains(KeyModifiers::SHIFT)
                     || key.modifiers.contains(KeyModifiers::ALT)
