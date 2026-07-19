@@ -12,6 +12,7 @@ use async_openai::types::chat::{
 };
 use futures::StreamExt;
 use serde_json::json;
+use uuid::Uuid;
 use std::env;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -71,6 +72,7 @@ pub async fn stream_openai_api(
     tool_calls.retain(|tc| !tc.id.is_empty());
 
     Ok(Message {
+        id: Uuid::now_v7(),
         role: Role::Assistant,
         content,
         tool_calls,
@@ -161,11 +163,11 @@ fn build_request(
         .build()?)
 }
 
-impl Into<ChatCompletionTools> for &ToolInfo {
-    fn into(self) -> ChatCompletionTools {
+impl From<&ToolInfo> for ChatCompletionTools {
+    fn from(tool: &ToolInfo) -> ChatCompletionTools {
         let mut properties = serde_json::Map::new();
         let mut required = Vec::new();
-        for param in &self.parameters {
+        for param in &tool.parameters {
             properties.insert(
                 param.name.clone(),
                 json!({
@@ -186,8 +188,8 @@ impl Into<ChatCompletionTools> for &ToolInfo {
 
         ChatCompletionTools::Function(ChatCompletionTool {
             function: FunctionObjectArgs::default()
-                .name(self.name.clone())
-                .description(self.description.clone())
+                .name(tool.name.clone())
+                .description(tool.description.clone())
                 .parameters(serde_json::Value::Object(parameters))
                 .build()
                 .unwrap(),

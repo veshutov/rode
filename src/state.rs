@@ -2,12 +2,14 @@ use crate::message::{Conversation, Message, Role};
 use crate::provider;
 use crate::tools::ToolRegistry;
 use ratatui::text::Line;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
+use uuid::Uuid;
 
 #[derive(Debug)]
-pub struct MessageCache {
+pub struct CachedMessage {
     pub content: String,
     pub width: usize,
     pub lines: Vec<Line<'static>>,
@@ -27,7 +29,7 @@ pub struct AppState {
     pub auto_scroll: bool,
     pub streaming: bool,
     pub current_response: String,
-    pub render_cache: Vec<MessageCache>,
+    pub render_cache: HashMap<Uuid, CachedMessage>,
     event_tx: Sender<LLMEvent>,
     pub cancelled: Arc<AtomicBool>,
 }
@@ -45,7 +47,7 @@ impl AppState {
             auto_scroll: true,
             streaming: false,
             current_response: String::new(),
-            render_cache: Vec::new(),
+            render_cache: HashMap::new(),
             event_tx,
             cancelled: Arc::new(AtomicBool::new(false)),
         };
@@ -69,9 +71,14 @@ impl AppState {
 
         let cancelled = self.cancelled.clone();
         tokio::spawn(async move {
-            let result = provider::stream_openai_api(&conv, &registry, |token| {
-                let _ = tx.send(LLMEvent::Token(token.to_string()));
-            }, cancelled)
+            let result = provider::stream_openai_api(
+                &conv,
+                &registry,
+                |token| {
+                    let _ = tx.send(LLMEvent::Token(token.to_string()));
+                },
+                cancelled,
+            )
             .await;
 
             match result {

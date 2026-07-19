@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 use crate::tools::ToolCall;
 
 #[derive(Debug, Clone)]
@@ -10,6 +12,7 @@ pub enum Role {
 
 #[derive(Debug, Clone)]
 pub struct Message {
+    pub id: Uuid,
     pub role: Role,
     pub content: String,
     pub tool_calls: Vec<ToolCall>,
@@ -38,6 +41,7 @@ impl Conversation {
 
     fn init_system_prompt(&mut self) {
         self.messages.push(Message {
+            id: Uuid::now_v7(),
             role: Role::System,
             content: self.system_message.clone(),
             tool_calls: Vec::new(),
@@ -48,6 +52,7 @@ impl Conversation {
 
     pub fn add_message(&mut self, role: Role, content: &str) {
         self.messages.push(Message {
+            id: Uuid::now_v7(),
             role,
             content: content.to_string(),
             tool_calls: Vec::new(),
@@ -58,6 +63,7 @@ impl Conversation {
 
     pub fn add_assistant_message(&mut self, content: &str, tool_calls: Vec<ToolCall>) {
         self.messages.push(Message {
+            id: Uuid::now_v7(),
             role: Role::Assistant,
             content: content.to_string(),
             tool_calls,
@@ -68,6 +74,7 @@ impl Conversation {
 
     pub fn add_tool_message(&mut self, tool_call_id: &str, content: &str) {
         self.messages.push(Message {
+            id: Uuid::now_v7(),
             role: Role::Tool,
             content: content.to_string(),
             tool_calls: Vec::new(),

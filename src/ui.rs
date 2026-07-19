@@ -1,4 +1,4 @@
-use crate::input::InputBuffer;
+use crate::{input::InputBuffer, state::CachedMessage};
 use crate::message::Role;
 use crate::state::AppState;
 use ansi_to_tui::IntoText;
@@ -9,9 +9,10 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
-use std::sync::LazyLock;
+use std::{collections::HashSet, sync::LazyLock};
 use termimad::MadSkin;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use uuid::Uuid;
 
 static MAD_SKIN: LazyLock<MadSkin> = LazyLock::new(MadSkin::default);
 
@@ -34,12 +35,7 @@ pub fn draw(frame: &mut Frame, state: &mut AppState, input: &InputBuffer) {
     let auto_scroll = state.auto_scroll;
     let current_scroll = state.scroll;
     let lines = build_chat_lines(state, chat_area.width as usize);
-    let scroll = compute_scroll(
-        &lines,
-        chat_area.height,
-        auto_scroll,
-        current_scroll,
-    );
+    let scroll = compute_scroll(&lines, chat_area.height, auto_scroll, current_scroll);
     let text = Text::from(lines);
     let paragraph = Paragraph::new(text);
     frame.render_widget(paragraph.scroll((scroll, 0)), chat_area);
@@ -67,9 +63,9 @@ fn build_chat_lines(state: &mut AppState, available_width: usize) -> Vec<Line<'_
     let mut lines: Vec<Line> = Vec::new();
     let messages = state.conversation.get_messages().to_vec();
 
-    for (i, msg) in messages.iter().enumerate() {
-        // Check cache validity
-        if let Some(cache) = state.render_cache.get(i) {
+    for msg in messages.iter() {
+        // Check cache validity by message ID
+        if let Some(cache) = state.render_cache.get(&msg.id) {
             if cache.content == msg.content && cache.width == available_width {
                 lines.extend(cache.lines.clone());
                 continue;
@@ -141,28 +137,29 @@ fn build_chat_lines(state: &mut AppState, available_width: usize) -> Vec<Line<'_
             }
             Role::Tool => {
                 if !msg.content.is_empty() {
-                    let wrapped = crate::utils::wrap_hard(&msg.content, available_width.saturating_sub(4));
+                    let wrapped =
+                        crate::utils::wrap_hard(&msg.content, available_width.saturating_sub(4));
                     let total = wrapped.len();
                     let max_lines = 5;
                     for line in wrapped.iter().take(max_lines) {
-                        msg_lines.push(
-                            Line::from(vec![
-                                Span::raw("  "),
-                                Span::styled(line.clone(), Style::default().fg(Color::DarkGray)),
-                            ])
-                        );
+                        msg_lines.push(Line::from(vec![
+                            Span::raw("  "),
+                            Span::styled(line.clone(), Style::default().fg(Color::DarkGray)),
+                        ]));
                     }
                     if total > max_lines {
                         let remaining = total - max_lines;
-                        msg_lines.push(
-                            Line::from(vec![
-                                Span::raw("  "),
-                                Span::styled(
-                                    format!("... ({} more line{})", remaining, if remaining == 1 { "" } else { "s" }),
-                                    Style::default().fg(Color::DarkGray),
+                        msg_lines.push(Line::from(vec![
+                            Span::raw("  "),
+                            Span::styled(
+                                format!(
+                                    "... ({} more line{})",
+                                    remaining,
+                                    if remaining == 1 { "" } else { "s" }
                                 ),
-                            ])
-                        );
+                                Style::default().fg(Color::DarkGray),
+                            ),
+                        ]));
                     }
                     msg_lines.push(Line::from(""));
                 }
@@ -170,24 +167,19 @@ fn build_chat_lines(state: &mut AppState, available_width: usize) -> Vec<Line<'_
         }
 
         // Update cache
-        let cache_entry = crate::state::MessageCache {
+        let cache_entry = CachedMessage {
             content: msg.content.clone(),
             width: available_width,
             lines: msg_lines.clone(),
         };
-        if i < state.render_cache.len() {
-            state.render_cache[i] = cache_entry;
-        } else {
-            state.render_cache.push(cache_entry);
-        }
+        state.render_cache.insert(msg.id, cache_entry);
 
         lines.extend(msg_lines);
     }
 
-    // Trim cache if messages were removed
-    if state.render_cache.len() > messages.len() {
-        state.render_cache.truncate(messages.len());
-    }
+    // Remove stale cache entries for messages no longer in conversation
+    let valid_ids: HashSet<Uuid> = messages.iter().map(|m| m.id).collect();
+    state.render_cache.retain(|k, _| valid_ids.contains(k));
 
     // Render streaming message
     if state.streaming && !state.current_response.is_empty() {
@@ -201,12 +193,7 @@ fn build_chat_lines(state: &mut AppState, available_width: usize) -> Vec<Line<'_
     lines
 }
 
-fn compute_scroll(
-    lines: &[Line],
-    visible_height: u16,
-    auto_scroll: bool,
-    current: u16,
-) -> u16 {
+fn compute_scroll(lines: &[Line], visible_height: u16, auto_scroll: bool, current: u16) -> u16 {
     let total_lines = lines.len() as u16;
     let max_scroll = total_lines.saturating_sub(visible_height);
     if auto_scroll {
