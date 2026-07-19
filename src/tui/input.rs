@@ -1,5 +1,7 @@
 use unicode_width::UnicodeWidthChar;
 
+use crate::tui::utils::wrap_hard;
+
 pub struct InputBuffer {
     content: String,
     cursor: usize,
@@ -139,8 +141,8 @@ impl InputBuffer {
         }
     }
 
-    pub fn wrapped_lines(&self, width: usize) -> Vec<String> {
-        crate::utils::wrap_hard(&self.content, width)
+    pub fn wrapped(&self, width: usize) -> Vec<String> {
+        wrap_hard(&self.content, width)
     }
 
     pub fn cursor_xy(&self, width: usize) -> (u16, u16) {

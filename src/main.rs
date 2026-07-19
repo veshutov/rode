@@ -16,13 +16,11 @@ use crate::tools::{
 };
 
 mod app;
-mod input;
 mod message;
 mod provider;
 mod state;
 mod tools;
-mod ui;
-mod utils;
+mod tui;
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -1,13 +1,11 @@
-use crate::input::InputBuffer;
-use crate::state::{AppState, LLMEvent};
-use crate::ui;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Terminal;
 use std::time::Duration;
 
+use crate::state::{AppState, LLMEvent};
+
 pub struct App {
     state: AppState,
-    input: InputBuffer,
 }
 
 impl App {
@@ -16,10 +14,7 @@ impl App {
         tool_registry: crate::tools::ToolRegistry,
     ) -> (Self, std::sync::mpsc::Receiver<LLMEvent>) {
         let (state, event_rx) = AppState::new(conversation, tool_registry);
-        let app = Self {
-            state,
-            input: InputBuffer::new(),
-        };
+        let app = Self { state };
         (app, event_rx)
     }
 
@@ -29,7 +24,14 @@ impl App {
         event_rx: &std::sync::mpsc::Receiver<LLMEvent>,
     ) -> anyhow::Result<()> {
         loop {
-            terminal.draw(|frame| ui::draw(frame, &mut self.state, &self.input))?;
+            terminal.draw(|frame| {
+                self.state.tui.render(
+                    frame,
+                    &mut self.state.conversation.get_messages(),
+                    &self.state.current_response,
+                    self.state.streaming,
+                )
+            })?;
 
             if event::poll(Duration::from_millis(25))? {
                 match event::read()? {
@@ -43,9 +45,9 @@ impl App {
                     Event::Paste(text) => {
                         for ch in text.chars() {
                             if ch == '\n' {
-                                self.input.insert_newline();
+                                self.state.tui.input.insert_newline();
                             } else {
-                                self.input.insert(ch);
+                                self.state.tui.input.insert(ch);
                             }
                         }
                     }
@@ -76,9 +78,9 @@ impl App {
                 if key.modifiers.contains(KeyModifiers::SHIFT)
                     || key.modifiers.contains(KeyModifiers::ALT)
                 {
-                    self.input.insert_newline();
-                } else if !self.state.streaming && !self.input.is_empty() {
-                    let content = self.input.take().trim().to_string();
+                    self.state.tui.input.insert_newline();
+                } else if !self.state.streaming && !self.state.tui.input.is_empty() {
+                    let content = self.state.tui.input.take().trim().to_string();
                     if content == "/clear" {
                         self.state.clear();
                     } else {
@@ -90,38 +92,38 @@ impl App {
                 if key.modifiers.contains(KeyModifiers::SUPER)
                     || key.modifiers.contains(KeyModifiers::CONTROL) =>
             {
-                self.input.delete_to_start_of_line();
+                self.state.tui.input.delete_to_start_of_line();
             }
             KeyCode::Char(c) => {
-                self.input.insert(c);
+                self.state.tui.input.insert(c);
             }
             KeyCode::Backspace => {
                 if key.modifiers.contains(KeyModifiers::SUPER) {
-                    self.input.delete_to_start_of_line();
+                    self.state.tui.input.delete_to_start_of_line();
                 } else if key.modifiers.contains(KeyModifiers::ALT) {
-                    self.input.delete_word_before_cursor();
+                    self.state.tui.input.delete_word_before_cursor();
                 } else {
-                    self.input.backspace();
+                    self.state.tui.input.backspace();
                 }
             }
             KeyCode::Left => {
-                self.input.move_left();
+                self.state.tui.input.move_left();
             }
             KeyCode::Right => {
-                self.input.move_right();
+                self.state.tui.input.move_right();
             }
             KeyCode::Up => {
-                if !self.input.move_up() {
-                    self.state.scroll_up();
+                if !self.state.tui.input.move_up() {
+                    self.state.tui.scroll.scroll_up();
                 }
             }
             KeyCode::Down => {
-                if !self.input.move_down() {
-                    self.state.scroll_down();
+                if !self.state.tui.input.move_down() {
+                    self.state.tui.scroll.scroll_down();
                 }
             }
             KeyCode::End => {
-                self.state.scroll_to_end();
+                self.state.tui.scroll.scroll_to_end();
             }
             _ => {}
         }

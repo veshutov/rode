@@ -1,19 +1,10 @@
 use crate::message::{Conversation, Message, Role};
 use crate::provider;
 use crate::tools::ToolRegistry;
-use ratatui::text::Line;
-use std::collections::HashMap;
+use crate::tui::TUI;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
-use uuid::Uuid;
-
-#[derive(Debug)]
-pub struct CachedMessage {
-    pub content: String,
-    pub width: usize,
-    pub lines: Vec<Line<'static>>,
-}
 
 #[derive(Clone)]
 pub enum LLMEvent {
@@ -23,13 +14,11 @@ pub enum LLMEvent {
 }
 
 pub struct AppState {
+    pub tui: TUI,
     pub conversation: Conversation,
     pub tool_registry: ToolRegistry,
-    pub scroll: u16,
-    pub auto_scroll: bool,
     pub streaming: bool,
     pub current_response: String,
-    pub render_cache: HashMap<Uuid, CachedMessage>,
     event_tx: Sender<LLMEvent>,
     pub cancelled: Arc<AtomicBool>,
 }
@@ -41,13 +30,11 @@ impl AppState {
     ) -> (Self, Receiver<LLMEvent>) {
         let (event_tx, event_rx) = channel::<LLMEvent>();
         let state = Self {
+            tui: TUI::new(),
             conversation,
             tool_registry,
-            scroll: 0,
-            auto_scroll: true,
             streaming: false,
             current_response: String::new(),
-            render_cache: HashMap::new(),
             event_tx,
             cancelled: Arc::new(AtomicBool::new(false)),
         };
@@ -56,13 +43,13 @@ impl AppState {
 
     pub fn submit_user_message(&mut self, content: &str) {
         self.conversation.add_message(Role::User, content);
-        self.auto_scroll = true;
+        self.tui.scroll.set_auto(true);
         self.start_stream();
     }
 
     pub fn start_stream(&mut self) {
         self.streaming = true;
-        self.auto_scroll = true;
+        self.tui.scroll.set_auto(true);
         self.current_response.clear();
         self.cancelled.store(false, Ordering::SeqCst);
         let conv = self.conversation.clone();
@@ -132,19 +119,6 @@ impl AppState {
         }
     }
 
-    pub fn scroll_up(&mut self) {
-        self.auto_scroll = false;
-        self.scroll = self.scroll.saturating_sub(1);
-    }
-
-    pub fn scroll_down(&mut self) {
-        self.scroll = self.scroll.saturating_add(1);
-    }
-
-    pub fn scroll_to_end(&mut self) {
-        self.auto_scroll = true;
-    }
-
     pub fn cancel(&mut self) {
         self.cancelled.store(true, Ordering::SeqCst);
         self.streaming = false;
@@ -153,10 +127,8 @@ impl AppState {
 
     pub fn clear(&mut self) {
         self.conversation.clear_messages();
-        self.scroll = 0;
-        self.auto_scroll = true;
+        self.tui.reset();
         self.streaming = false;
         self.current_response.clear();
-        self.render_cache.clear();
     }
 }
