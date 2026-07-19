@@ -11,7 +11,7 @@ use ratatui::{
 };
 use std::sync::LazyLock;
 use termimad::MadSkin;
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 static MAD_SKIN: LazyLock<MadSkin> = LazyLock::new(MadSkin::default);
 
@@ -111,22 +111,62 @@ fn build_chat_lines(state: &mut AppState, available_width: usize) -> Vec<Line<'_
                 }
                 if !msg.tool_calls.is_empty() {
                     for tc in &msg.tool_calls {
+                        let prefix = format!("{}: ", tc.name);
+                        let prefix_width = prefix.width();
+                        let max_args_width = available_width.saturating_sub(2 + prefix_width);
+                        let args = &tc.arguments;
+                        let mut line_text = prefix;
+                        if args.width() <= max_args_width {
+                            line_text.push_str(args);
+                        } else {
+                            let mut current_width = 0;
+                            let target = max_args_width.saturating_sub(3); // room for "..."
+                            for ch in args.chars() {
+                                let w = ch.width().unwrap_or(0);
+                                if current_width + w > target {
+                                    break;
+                                }
+                                current_width += w;
+                                line_text.push(ch);
+                            }
+                            line_text.push_str("...");
+                        }
                         msg_lines.push(Line::from(vec![
                             Span::raw("  "),
-                            Span::styled(
-                                format!(
-                                    "{}: {}",
-                                    tc.name,
-                                    tc.arguments.chars().take(40).collect::<String>()
-                                ),
-                                Style::default().fg(Color::Yellow),
-                            ),
+                            Span::styled(line_text, Style::default().fg(Color::Yellow)),
                         ]));
                     }
                 }
                 msg_lines.push(Line::from(""));
             }
-            Role::Tool => {}
+            Role::Tool => {
+                if !msg.content.is_empty() {
+                    let wrapped = crate::utils::wrap_hard(&msg.content, available_width.saturating_sub(4));
+                    let total = wrapped.len();
+                    let max_lines = 5;
+                    for line in wrapped.iter().take(max_lines) {
+                        msg_lines.push(
+                            Line::from(vec![
+                                Span::raw("  "),
+                                Span::styled(line.clone(), Style::default().fg(Color::DarkGray)),
+                            ])
+                        );
+                    }
+                    if total > max_lines {
+                        let remaining = total - max_lines;
+                        msg_lines.push(
+                            Line::from(vec![
+                                Span::raw("  "),
+                                Span::styled(
+                                    format!("... ({} more line{})", remaining, if remaining == 1 { "" } else { "s" }),
+                                    Style::default().fg(Color::DarkGray),
+                                ),
+                            ])
+                        );
+                    }
+                    msg_lines.push(Line::from(""));
+                }
+            }
         }
 
         // Update cache

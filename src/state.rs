@@ -56,6 +56,7 @@ impl AppState {
 
     pub fn start_stream(&mut self) {
         self.streaming = true;
+        self.auto_scroll = true;
         self.current_response.clear();
         let conv = self.conversation.clone();
         let registry = self.tool_registry.clone();
