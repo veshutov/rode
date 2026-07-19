@@ -14,7 +14,7 @@ use unicode_width::UnicodeWidthStr;
 
 const USER_BG: Color = Color::Rgb(35, 35, 35);
 
-pub fn draw(frame: &mut Frame, state: &AppState, input: &InputBuffer) {
+pub fn draw(frame: &mut Frame, state: &mut AppState, input: &InputBuffer) {
     let input_area_width = frame.area().width.saturating_sub(2) as usize;
     let wrapped_input = input.wrapped_lines(input_area_width);
     let input_lines = wrapped_input.len().max(1);
@@ -31,7 +31,6 @@ pub fn draw(frame: &mut Frame, state: &AppState, input: &InputBuffer) {
     let lines = build_chat_lines(state, chat_area.width as usize);
     let scroll = compute_scroll(
         &lines,
-        chat_area.width,
         chat_area.height,
         state.auto_scroll,
         state.scroll,
@@ -39,6 +38,7 @@ pub fn draw(frame: &mut Frame, state: &AppState, input: &InputBuffer) {
     let text = Text::from(lines);
     let paragraph = Paragraph::new(text);
     frame.render_widget(paragraph.scroll((scroll, 0)), chat_area);
+    state.scroll = scroll;
 
     let input_title = if state.streaming { "working..." } else { "" };
     let input_text = Text::from(
@@ -127,24 +127,12 @@ fn build_chat_lines(state: &AppState, available_width: usize) -> Vec<Line<'_>> {
 
 fn compute_scroll(
     lines: &[Line],
-    visible_width: u16,
     visible_height: u16,
     auto_scroll: bool,
     current: u16,
 ) -> u16 {
-    let total_visual_lines: u16 = lines
-        .iter()
-        .map(|line| {
-            let w = line.width() as usize;
-            if w == 0 {
-                1u16
-            } else {
-                ((w - 1) / visible_width.max(1) as usize + 1) as u16
-            }
-        })
-        .sum();
-
-    let max_scroll = total_visual_lines.saturating_sub(visible_height);
+    let total_lines = lines.len() as u16;
+    let max_scroll = total_lines.saturating_sub(visible_height);
     if auto_scroll {
         max_scroll
     } else {

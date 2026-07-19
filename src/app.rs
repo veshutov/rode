@@ -29,7 +29,7 @@ impl App {
         event_rx: &std::sync::mpsc::Receiver<LLMEvent>,
     ) -> anyhow::Result<()> {
         loop {
-            terminal.draw(|frame| ui::draw(frame, &self.state, &self.input))?;
+            terminal.draw(|frame| ui::draw(frame, &mut self.state, &self.input))?;
 
             if event::poll(Duration::from_millis(25))? {
                 match event::read()? {
@@ -75,7 +75,11 @@ impl App {
                     self.input.insert_newline();
                 } else if !self.state.streaming && !self.input.is_empty() {
                     let content = self.input.take().trim().to_string();
-                    self.state.submit_user_message(&content);
+                    if content == "/clear" {
+                        self.state.clear();
+                    } else {
+                        self.state.submit_user_message(&content);
+                    }
                 }
             }
             KeyCode::Char(c) => {

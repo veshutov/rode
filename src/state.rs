@@ -120,4 +120,12 @@ impl AppState {
     pub fn scroll_to_end(&mut self) {
         self.auto_scroll = true;
     }
+
+    pub fn clear(&mut self) {
+        self.conversation.clear_messages();
+        self.scroll = 0;
+        self.auto_scroll = true;
+        self.streaming = false;
+        self.current_response.clear();
+    }
 }

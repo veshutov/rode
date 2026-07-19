@@ -93,4 +93,9 @@ impl Conversation {
     pub fn get_messages(&self) -> &[Message] {
         &self.messages
     }
+
+    pub fn clear_messages(&mut self) {
+        self.messages.clear();
+        self.init_system_prompt();
+    }
 }
