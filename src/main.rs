@@ -16,9 +16,13 @@ use crate::tools::{
 };
 
 mod app;
+mod input;
 mod message;
 mod provider;
+mod state;
 mod tools;
+mod ui;
+mod utils;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -47,8 +51,8 @@ pub async fn run(conversation: Conversation, tool_registry: ToolRegistry) -> Res
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(conversation, tool_registry);
-    let result = app.run(&mut terminal);
+    let (mut app, event_rx) = App::new(conversation, tool_registry);
+    let result = app.run(&mut terminal, &event_rx);
 
     disable_raw_mode()?;
     terminal.backend_mut().execute(LeaveAlternateScreen)?;
