@@ -1,7 +1,15 @@
 use crate::message::{Conversation, Message, Role};
 use crate::provider;
 use crate::tools::ToolRegistry;
+use ratatui::text::Line;
 use std::sync::mpsc::{Receiver, Sender, channel};
+
+#[derive(Debug)]
+pub struct MessageCache {
+    pub content: String,
+    pub width: usize,
+    pub lines: Vec<Line<'static>>,
+}
 
 #[derive(Clone)]
 pub enum LLMEvent {
@@ -17,6 +25,7 @@ pub struct AppState {
     pub auto_scroll: bool,
     pub streaming: bool,
     pub current_response: String,
+    pub render_cache: Vec<MessageCache>,
     event_tx: Sender<LLMEvent>,
 }
 
@@ -33,6 +42,7 @@ impl AppState {
             auto_scroll: true,
             streaming: false,
             current_response: String::new(),
+            render_cache: Vec::new(),
             event_tx,
         };
         (state, event_rx)
@@ -127,5 +137,6 @@ impl AppState {
         self.auto_scroll = true;
         self.streaming = false;
         self.current_response.clear();
+        self.render_cache.clear();
     }
 }

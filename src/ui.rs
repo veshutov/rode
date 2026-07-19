@@ -9,8 +9,11 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
+use std::sync::LazyLock;
 use termimad::MadSkin;
 use unicode_width::UnicodeWidthStr;
+
+static MAD_SKIN: LazyLock<MadSkin> = LazyLock::new(MadSkin::default);
 
 const USER_BG: Color = Color::Rgb(35, 35, 35);
 
@@ -28,12 +31,14 @@ pub fn draw(frame: &mut Frame, state: &mut AppState, input: &InputBuffer) {
     let chat_area = chunks[0];
     let input_area = chunks[1];
 
+    let auto_scroll = state.auto_scroll;
+    let current_scroll = state.scroll;
     let lines = build_chat_lines(state, chat_area.width as usize);
     let scroll = compute_scroll(
         &lines,
         chat_area.height,
-        state.auto_scroll,
-        state.scroll,
+        auto_scroll,
+        current_scroll,
     );
     let text = Text::from(lines);
     let paragraph = Paragraph::new(text);
@@ -58,10 +63,21 @@ pub fn draw(frame: &mut Frame, state: &mut AppState, input: &InputBuffer) {
     frame.set_cursor_position((input_area.x + cursor_x, input_area.y + cursor_y + 1));
 }
 
-fn build_chat_lines(state: &AppState, available_width: usize) -> Vec<Line<'_>> {
+fn build_chat_lines(state: &mut AppState, available_width: usize) -> Vec<Line<'_>> {
     let mut lines: Vec<Line> = Vec::new();
+    let messages = state.conversation.get_messages().to_vec();
 
-    for msg in state.conversation.get_messages() {
+    for (i, msg) in messages.iter().enumerate() {
+        // Check cache validity
+        if let Some(cache) = state.render_cache.get(i) {
+            if cache.content == msg.content && cache.width == available_width {
+                lines.extend(cache.lines.clone());
+                continue;
+            }
+        }
+
+        let mut msg_lines: Vec<Line<'static>> = Vec::new();
+
         match msg.role {
             Role::System => continue,
             Role::User => {
@@ -69,13 +85,13 @@ fn build_chat_lines(state: &AppState, available_width: usize) -> Vec<Line<'_>> {
                 let padding_line =
                     Line::from(" ".repeat(available_width)).style(Style::default().bg(USER_BG));
 
-                lines.push(padding_line.clone());
+                msg_lines.push(padding_line.clone());
 
                 for line in crate::utils::wrap_hard(&msg.content.trim(), user_width) {
                     let line_width = line.width();
                     let right_pad = available_width.saturating_sub(line_width + 2);
 
-                    lines.push(
+                    msg_lines.push(
                         Line::from(vec![
                             Span::raw("  "),
                             Span::raw(line),
@@ -84,18 +100,18 @@ fn build_chat_lines(state: &AppState, available_width: usize) -> Vec<Line<'_>> {
                         .style(Style::default().bg(USER_BG)),
                     );
                 }
-                lines.push(padding_line);
-                lines.push(Line::from(""));
+                msg_lines.push(padding_line);
+                msg_lines.push(Line::from(""));
             }
             Role::Assistant => {
                 let rendered = render_markdown(&msg.content.trim_start());
                 for mut line in rendered.lines {
                     line.spans.insert(0, Span::raw("  "));
-                    lines.push(line);
+                    msg_lines.push(line);
                 }
                 if !msg.tool_calls.is_empty() {
                     for tc in &msg.tool_calls {
-                        lines.push(Line::from(vec![
+                        msg_lines.push(Line::from(vec![
                             Span::raw("  "),
                             Span::styled(
                                 format!(
@@ -108,12 +124,32 @@ fn build_chat_lines(state: &AppState, available_width: usize) -> Vec<Line<'_>> {
                         ]));
                     }
                 }
-                lines.push(Line::from(""));
+                msg_lines.push(Line::from(""));
             }
             Role::Tool => {}
         }
+
+        // Update cache
+        let cache_entry = crate::state::MessageCache {
+            content: msg.content.clone(),
+            width: available_width,
+            lines: msg_lines.clone(),
+        };
+        if i < state.render_cache.len() {
+            state.render_cache[i] = cache_entry;
+        } else {
+            state.render_cache.push(cache_entry);
+        }
+
+        lines.extend(msg_lines);
     }
 
+    // Trim cache if messages were removed
+    if state.render_cache.len() > messages.len() {
+        state.render_cache.truncate(messages.len());
+    }
+
+    // Render streaming message
     if state.streaming && !state.current_response.is_empty() {
         let rendered = render_markdown(&state.current_response.trim_start());
         for mut line in rendered.lines {
@@ -144,8 +180,7 @@ pub fn render_markdown(text: &str) -> Text<'static> {
     if text.trim().is_empty() {
         return Text::default();
     }
-    let skin = MadSkin::default();
-    let ct = skin.term_text(text);
+    let ct = MAD_SKIN.term_text(text);
     let ansi_string = format!("{}", ct);
     ansi_string
         .into_text()
