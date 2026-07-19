@@ -72,9 +72,6 @@ impl AppState {
         match event {
             LLMEvent::Token(token) => {
                 self.current_response.push_str(&token);
-                if self.auto_scroll {
-                    self.scroll = u16::MAX;
-                }
                 Vec::new()
             }
             LLMEvent::Done(msg) => {
@@ -114,6 +111,10 @@ impl AppState {
     pub fn scroll_up(&mut self) {
         self.auto_scroll = false;
         self.scroll = self.scroll.saturating_sub(1);
+    }
+
+    pub fn scroll_down(&mut self) {
+        self.scroll = self.scroll.saturating_add(1);
     }
 
     pub fn scroll_to_end(&mut self) {

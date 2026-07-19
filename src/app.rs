@@ -1,7 +1,7 @@
 use crate::input::InputBuffer;
 use crate::state::{AppState, LLMEvent};
 use crate::ui;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use ratatui::Terminal;
 use std::time::Duration;
 
@@ -11,7 +11,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(conversation: crate::message::Conversation, tool_registry: crate::tools::ToolRegistry) -> (Self, std::sync::mpsc::Receiver<LLMEvent>) {
+    pub fn new(
+        conversation: crate::message::Conversation,
+        tool_registry: crate::tools::ToolRegistry,
+    ) -> (Self, std::sync::mpsc::Receiver<LLMEvent>) {
         let (state, event_rx) = AppState::new(conversation, tool_registry);
         let app = Self {
             state,
@@ -28,13 +31,25 @@ impl App {
         loop {
             terminal.draw(|frame| ui::draw(frame, &self.state, &self.input))?;
 
-            if event::poll(Duration::from_millis(50))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind == KeyEventKind::Press {
-                        if self.handle_key(key)? {
-                            return Ok(());
+            if event::poll(Duration::from_millis(25))? {
+                match event::read()? {
+                    Event::Key(key) => {
+                        if key.kind == KeyEventKind::Press {
+                            if self.handle_key(key)? {
+                                return Ok(());
+                            }
                         }
                     }
+                    Event::Mouse(mouse) => match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            self.state.scroll_up();
+                        }
+                        MouseEventKind::ScrollDown => {
+                            self.state.scroll_down();
+                        }
+                        _ => {}
+                    },
+                    _ => {}
                 }
             }
 
@@ -76,14 +91,14 @@ impl App {
                 self.input.move_right();
             }
             KeyCode::Up => {
-                if self.input.content().is_empty() || self.input.cursor_xy(1).1 == 0 {
+                if !self.input.move_up() {
                     self.state.scroll_up();
-                } else {
-                    self.input.move_up();
                 }
             }
             KeyCode::Down => {
-                self.input.move_down();
+                if !self.input.move_down() {
+                    self.state.scroll_down();
+                }
             }
             KeyCode::End => {
                 self.state.scroll_to_end();

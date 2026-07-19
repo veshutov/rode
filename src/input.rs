@@ -13,10 +13,6 @@ impl InputBuffer {
         }
     }
 
-    pub fn content(&self) -> &str {
-        &self.content
-    }
-
     pub fn is_empty(&self) -> bool {
         self.content.trim().is_empty()
     }
@@ -68,21 +64,28 @@ impl InputBuffer {
         }
     }
 
-    pub fn move_up(&mut self) {
+    pub fn move_up(&mut self) -> bool {
         if let Some(pos) = self.content[..self.cursor].rfind('\n') {
             self.cursor = pos;
+            true
         } else if self.cursor > 0 {
             self.cursor = 0;
+            true
+        } else {
+            false
         }
     }
 
-    pub fn move_down(&mut self) {
+    pub fn move_down(&mut self) -> bool {
         if self.cursor < self.content.len() {
             if let Some(pos) = self.content[self.cursor + 1..].find('\n') {
                 self.cursor = self.cursor + 1 + pos;
             } else {
                 self.cursor = self.content.len();
             }
+            true
+        } else {
+            false
         }
     }
 

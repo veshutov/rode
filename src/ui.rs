@@ -1,7 +1,7 @@
 use crate::input::InputBuffer;
 use crate::message::Role;
 use crate::state::AppState;
-use crate::utils::render_markdown;
+use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -9,6 +9,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
+use termimad::MadSkin;
 use unicode_width::UnicodeWidthStr;
 
 const USER_BG: Color = Color::Rgb(35, 35, 35);
@@ -28,12 +29,18 @@ pub fn draw(frame: &mut Frame, state: &AppState, input: &InputBuffer) {
     let input_area = chunks[1];
 
     let lines = build_chat_lines(state, chat_area.width as usize);
-    let scroll = compute_scroll(&lines, chat_area.height, state.auto_scroll, state.scroll);
+    let scroll = compute_scroll(
+        &lines,
+        chat_area.width,
+        chat_area.height,
+        state.auto_scroll,
+        state.scroll,
+    );
     let text = Text::from(lines);
     let paragraph = Paragraph::new(text);
     frame.render_widget(paragraph.scroll((scroll, 0)), chat_area);
 
-    let input_title = if state.streaming { "streaming..." } else { "" };
+    let input_title = if state.streaming { "working..." } else { "" };
     let input_text = Text::from(
         wrapped_input
             .into_iter()
@@ -118,7 +125,13 @@ fn build_chat_lines(state: &AppState, available_width: usize) -> Vec<Line<'_>> {
     lines
 }
 
-fn compute_scroll(lines: &[Line], visible_height: u16, auto_scroll: bool, current: u16) -> u16 {
+fn compute_scroll(
+    lines: &[Line],
+    visible_width: u16,
+    visible_height: u16,
+    auto_scroll: bool,
+    current: u16,
+) -> u16 {
     let total_visual_lines: u16 = lines
         .iter()
         .map(|line| {
@@ -126,7 +139,7 @@ fn compute_scroll(lines: &[Line], visible_height: u16, auto_scroll: bool, curren
             if w == 0 {
                 1u16
             } else {
-                ((w - 1) / visible_height.max(1) as usize + 1) as u16
+                ((w - 1) / visible_width.max(1) as usize + 1) as u16
             }
         })
         .sum();
@@ -137,4 +150,16 @@ fn compute_scroll(lines: &[Line], visible_height: u16, auto_scroll: bool, curren
     } else {
         current.min(max_scroll)
     }
+}
+
+pub fn render_markdown(text: &str) -> Text<'static> {
+    if text.trim().is_empty() {
+        return Text::default();
+    }
+    let skin = MadSkin::default();
+    let ct = skin.term_text(text);
+    let ansi_string = format!("{}", ct);
+    ansi_string
+        .into_text()
+        .unwrap_or_else(|_| Text::from(text.to_string()))
 }

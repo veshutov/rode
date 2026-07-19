@@ -1,6 +1,7 @@
 use anyhow::Result;
 use crossterm::{
     ExecutableCommand,
+    event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use dotenv::dotenv;
@@ -48,6 +49,7 @@ pub async fn run(conversation: Conversation, tool_registry: ToolRegistry) -> Res
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     stdout.execute(EnterAlternateScreen)?;
+    stdout.execute(EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -55,6 +57,7 @@ pub async fn run(conversation: Conversation, tool_registry: ToolRegistry) -> Res
     let result = app.run(&mut terminal, &event_rx);
 
     disable_raw_mode()?;
+    terminal.backend_mut().execute(DisableMouseCapture)?;
     terminal.backend_mut().execute(LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
