@@ -1,7 +1,6 @@
 use crate::message::{Conversation, Message, Role};
 use crate::provider;
 use crate::tools::ToolRegistry;
-use crate::tui::TUI;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -14,7 +13,6 @@ pub enum LLMEvent {
 }
 
 pub struct AppState {
-    pub tui: TUI,
     pub conversation: Conversation,
     pub tool_registry: ToolRegistry,
     pub streaming: bool,
@@ -30,7 +28,6 @@ impl AppState {
     ) -> (Self, Receiver<LLMEvent>) {
         let (event_tx, event_rx) = channel::<LLMEvent>();
         let state = Self {
-            tui: TUI::new(),
             conversation,
             tool_registry,
             streaming: false,
@@ -43,13 +40,11 @@ impl AppState {
 
     pub fn submit_user_message(&mut self, content: &str) {
         self.conversation.add_message(Role::User, content);
-        self.tui.scroll.set_auto(true);
         self.start_stream();
     }
 
     pub fn start_stream(&mut self) {
         self.streaming = true;
-        self.tui.scroll.set_auto(true);
         self.current_response.clear();
         self.cancelled.store(false, Ordering::SeqCst);
         let conv = self.conversation.clone();
@@ -127,7 +122,6 @@ impl AppState {
 
     pub fn clear(&mut self) {
         self.conversation.clear_messages();
-        self.tui.reset();
         self.streaming = false;
         self.current_response.clear();
     }

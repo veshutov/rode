@@ -1,3 +1,4 @@
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -15,6 +16,10 @@ pub mod line;
 pub mod scroll;
 mod utils;
 
+pub enum TUIEvent {
+    Submit(String),
+}
+
 pub struct TUI {
     pub input: InputBuffer,
     pub scroll: Scroll,
@@ -28,6 +33,81 @@ impl TUI {
             line_builder: MessageLinesBuilder::new(),
             scroll: Scroll::new(),
         }
+    }
+
+    pub fn on_event(&mut self, event: &Event, streaming: bool) -> Option<TUIEvent> {
+        match event {
+            Event::Key(key) => {
+                if key.kind == KeyEventKind::Press {
+                    return self.handle_key(key, streaming);
+                }
+            }
+            Event::Paste(text) => {
+                for ch in text.chars() {
+                    if ch == '\n' {
+                        self.input.insert_newline();
+                    } else {
+                        self.input.insert(ch);
+                    }
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn handle_key(&mut self, key: &KeyEvent, streaming: bool) -> Option<TUIEvent> {
+        match key.code {
+            KeyCode::Enter => {
+                if key.modifiers.contains(KeyModifiers::SHIFT)
+                    || key.modifiers.contains(KeyModifiers::ALT)
+                {
+                    self.input.insert_newline();
+                } else if !streaming && !self.input.is_empty() {
+                    let content = self.input.take().trim().to_string();
+                    return Some(TUIEvent::Submit(content));
+                }
+            }
+            KeyCode::Char('u')
+                if key.modifiers.contains(KeyModifiers::SUPER)
+                    || key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                self.input.delete_to_start_of_line();
+            }
+            KeyCode::Char(c) => {
+                self.input.insert(c);
+            }
+            KeyCode::Backspace => {
+                if key.modifiers.contains(KeyModifiers::SUPER) {
+                    self.input.delete_to_start_of_line();
+                } else if key.modifiers.contains(KeyModifiers::ALT) {
+                    self.input.delete_word_before_cursor();
+                } else {
+                    self.input.backspace();
+                }
+            }
+            KeyCode::Left => {
+                self.input.move_left();
+            }
+            KeyCode::Right => {
+                self.input.move_right();
+            }
+            KeyCode::Up => {
+                if !self.input.move_up() {
+                    self.scroll.scroll_up();
+                }
+            }
+            KeyCode::Down => {
+                if !self.input.move_down() {
+                    self.scroll.scroll_down();
+                }
+            }
+            KeyCode::End => {
+                self.scroll.scroll_to_end();
+            }
+            _ => {}
+        }
+        None
     }
 
     pub fn render(
