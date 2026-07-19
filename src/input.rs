@@ -45,6 +45,56 @@ impl InputBuffer {
         }
     }
 
+    pub fn delete_word_before_cursor(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        let text = &self.content[..self.cursor];
+        let mut end = text.len();
+
+        // Skip trailing whitespace
+        while end > 0 {
+            if let Some((i, c)) = text[..end].char_indices().last() {
+                if c.is_whitespace() {
+                    end = i;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        // Skip word characters
+        while end > 0 {
+            if let Some((i, c)) = text[..end].char_indices().last() {
+                if !c.is_whitespace() {
+                    end = i;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        self.content.replace_range(end..self.cursor, "");
+        self.cursor = end;
+    }
+
+    pub fn delete_to_start_of_line(&mut self) {
+        if self.cursor == 0 {
+            self.backspace();
+            return;
+        }
+        let start = self.content[..self.cursor]
+            .rfind('\n')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        self.content.replace_range(start..self.cursor, "");
+        self.cursor = start;
+    }
+
     pub fn move_left(&mut self) {
         if self.cursor > 0 {
             self.cursor = self.content[..self.cursor]

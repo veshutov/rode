@@ -82,11 +82,23 @@ impl App {
                     }
                 }
             }
+            KeyCode::Char('u')
+                if key.modifiers.contains(KeyModifiers::SUPER)
+                    || key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                self.input.delete_to_start_of_line();
+            }
             KeyCode::Char(c) => {
                 self.input.insert(c);
             }
             KeyCode::Backspace => {
-                self.input.backspace();
+                if key.modifiers.contains(KeyModifiers::SUPER) {
+                    self.input.delete_to_start_of_line();
+                } else if key.modifiers.contains(KeyModifiers::ALT) {
+                    self.input.delete_word_before_cursor();
+                } else {
+                    self.input.backspace();
+                }
             }
             KeyCode::Left => {
                 self.input.move_left();
