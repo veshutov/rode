@@ -8,10 +8,11 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph},
 };
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Duration;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 enum LLMEvent {
     Token(String),
@@ -65,7 +66,12 @@ impl App {
                                 return Ok(());
                             }
                             KeyCode::Enter => {
-                                if !self.streaming && !self.input.trim().is_empty() {
+                                if key.modifiers.contains(KeyModifiers::SHIFT)
+                                    || key.modifiers.contains(KeyModifiers::ALT)
+                                {
+                                    self.input.insert(self.cursor_pos, '\n');
+                                    self.cursor_pos += 1;
+                                } else if !self.streaming && !self.input.trim().is_empty() {
                                     let content = self.input.trim().to_string();
                                     self.conversation.add_message(Role::User, &content);
                                     self.input.clear();
@@ -95,11 +101,26 @@ impl App {
                                 }
                             }
                             KeyCode::Up => {
-                                self.auto_scroll = false;
-                                self.scroll = self.scroll.saturating_sub(1);
+                                if let Some(pos) = self.input[..self.cursor_pos].rfind('\n') {
+                                    self.cursor_pos = pos;
+                                } else if self.cursor_pos > 0 {
+                                    self.cursor_pos = 0;
+                                } else {
+                                    self.auto_scroll = false;
+                                    self.scroll = self.scroll.saturating_sub(1);
+                                }
                             }
                             KeyCode::Down => {
-                                self.scroll = self.scroll.saturating_add(1);
+                                if self.cursor_pos < self.input.len() {
+                                    if let Some(pos) = self.input[self.cursor_pos + 1..].find('\n')
+                                    {
+                                        self.cursor_pos = self.cursor_pos + 1 + pos;
+                                    } else {
+                                        self.cursor_pos = self.input.len();
+                                    }
+                                } else {
+                                    self.scroll = self.scroll.saturating_add(1);
+                                }
                             }
                             KeyCode::End => {
                                 self.auto_scroll = true;
@@ -176,71 +197,81 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
+        let input_area_width = frame.area().width.saturating_sub(2) as usize;
+
+        // --- manually wrap input for consistent height & cursor ---
+        let wrapped_input = wrap_hard(&self.input, input_area_width);
+        let input_lines = wrapped_input.len().max(1);
+        let input_height = (input_lines as u16 + 2).max(3);
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(3)])
+            .constraints([Constraint::Fill(1), Constraint::Length(input_height)])
             .split(frame.area());
 
         let chat_area = chunks[0];
         let input_area = chunks[1];
+        let available_width = chat_area.width as usize;
+        const USER_BG: Color = Color::Rgb(35, 35, 35);
 
+        // --- chat area ---
         let mut lines: Vec<Line> = Vec::new();
 
         for msg in self.conversation.get_messages() {
             match msg.role {
                 Role::System => continue,
                 Role::User => {
-                    lines.push(Line::from(Span::styled(
-                        "👤 You",
-                        Style::default().fg(Color::Cyan),
-                    )));
-                    for line in msg.content.lines() {
-                        lines.push(Line::from(line));
+                    let user_width = available_width.saturating_sub(4);
+                    let padding_line =
+                        Line::from(" ".repeat(available_width)).style(Style::default().bg(USER_BG));
+
+                    lines.push(padding_line.clone());
+
+                    for line in wrap_hard(&msg.content.trim(), user_width) {
+                        let line_width = line.width();
+                        let right_pad = available_width.saturating_sub(line_width + 2);
+
+                        // Формируем текст строки без индивидуальных стилей у Span
+                        lines.push(
+                            Line::from(vec![
+                                Span::raw("  "),
+                                Span::raw(line),
+                                Span::raw(" ".repeat(right_pad)),
+                            ])
+                            .style(Style::default().bg(USER_BG)), // Красит всю строку целиком, включая пробелы
+                        );
                     }
+                    lines.push(padding_line);
                     lines.push(Line::from(""));
                 }
                 Role::Assistant => {
-                    lines.push(Line::from(Span::styled(
-                        "🤖 Assistant",
-                        Style::default().fg(Color::Green),
-                    )));
                     let rendered = render_markdown(&msg.content);
                     lines.extend(rendered.lines);
                     if !msg.tool_calls.is_empty() {
                         for tc in &msg.tool_calls {
                             lines.push(Line::from(Span::styled(
-                                format!("  🔧 {}: {}", tc.name, tc.arguments),
+                                format!(
+                                    "{}: {}",
+                                    tc.name,
+                                    tc.arguments.chars().take(40).collect::<String>()
+                                ),
                                 Style::default().fg(Color::Yellow),
                             )));
                         }
                     }
                     lines.push(Line::from(""));
                 }
-                Role::Tool => {
-                    // lines.push(Line::from(Span::styled(
-                    //     "📊 Result",
-                    //     Style::default().fg(Color::Yellow),
-                    // )));
-                    // for line in msg.content.lines() {
-                    //     lines.push(Line::from(line));
-                    // }
-                    // lines.push(Line::from(""));
-                }
+                Role::Tool => {}
             }
         }
 
         if self.streaming && !self.current_response.is_empty() {
-            lines.push(Line::from(Span::styled(
-                "🤖 Assistant",
-                Style::default().fg(Color::Green),
-            )));
             let rendered = render_markdown(&self.current_response);
             lines.extend(rendered.lines);
-            lines.push(Line::from(""));
         }
 
-        let visible_height = chat_area.height.saturating_sub(2);
-        let available_width = chat_area.width.saturating_sub(2) as usize;
+        let visible_height = chat_area.height;
+        let available_width = chat_area.width as usize;
 
         let total_visual_lines: u16 = lines
             .iter()
@@ -255,31 +286,95 @@ impl App {
             .sum();
 
         let text = Text::from(lines);
-        let paragraph = Paragraph::new(text)
-            .wrap(Wrap { trim: true })
-            .block(Block::default().borders(Borders::ALL).title("Chat"));
+        let paragraph = Paragraph::new(text);
 
         let max_scroll = total_visual_lines.saturating_sub(visible_height);
-
         if self.auto_scroll {
             self.scroll = max_scroll;
         } else {
             self.scroll = self.scroll.min(max_scroll);
         }
-
         frame.render_widget(paragraph.scroll((self.scroll, 0)), chat_area);
 
-        let input_title = if self.streaming {
-            "Input (streaming...)"
-        } else {
-            "Input"
-        };
-        let input_paragraph = Paragraph::new(self.input.as_str())
-            .block(Block::default().borders(Borders::ALL).title(input_title));
+        // --- input area (render pre-wrapped lines, no Paragraph wrap) ---
+        let input_title = if self.streaming { "streaming..." } else { "" };
+        let input_text = Text::from(
+            wrapped_input
+                .into_iter()
+                .map(Line::from)
+                .collect::<Vec<_>>(),
+        );
+        let input_paragraph = Paragraph::new(input_text).block(
+            Block::default()
+                .borders(Borders::TOP | Borders::BOTTOM)
+                .title(input_title),
+        );
         frame.render_widget(input_paragraph, input_area);
 
-        let cursor_x = input_area.x + self.cursor_pos as u16 + 1;
-        let cursor_y = input_area.y + 1;
+        // --- cursor position based on hard-wrapped text ---
+        let (cursor_x, cursor_y) = {
+            let mut y = 0u16;
+            let mut x = 0u16;
+            let mut chars_seen = 0usize;
+
+            for line in self.input.lines() {
+                let _line_w = line.width() as usize;
+                let mut col_in_line = 0usize;
+                for ch in line.chars() {
+                    if chars_seen == self.cursor_pos {
+                        x = col_in_line as u16;
+                        break;
+                    }
+                    col_in_line += ch.width().unwrap_or(0);
+                    if col_in_line > input_area_width {
+                        y += 1;
+                        col_in_line = ch.width().unwrap_or(0);
+                    }
+                    chars_seen += ch.len_utf8();
+                }
+
+                if chars_seen == self.cursor_pos {
+                    x = col_in_line as u16;
+                    break;
+                }
+
+                // newline
+                if chars_seen < self.cursor_pos {
+                    chars_seen += 1; // '\n'
+                    y += 1;
+                }
+            }
+
+            if chars_seen == self.cursor_pos && self.input.ends_with('\n') {
+                x = 0;
+            }
+
+            (input_area.x + x, input_area.y + y + 1)
+        };
         frame.set_cursor_position((cursor_x, cursor_y));
     }
+}
+
+/// Hard-wrap a string at character width boundaries.
+fn wrap_hard(text: &str, width: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for raw_line in text.split('\n') {
+        let mut current = String::new();
+        let mut current_width = 0usize;
+        for ch in raw_line.chars() {
+            let w = ch.width().unwrap_or(0);
+            if current_width + w > width && width > 0 {
+                lines.push(std::mem::take(&mut current));
+                current_width = 0;
+            }
+            current.push(ch);
+            current_width += w;
+        }
+        if current.is_empty() && !lines.is_empty() {
+            lines.push(String::new());
+        } else {
+            lines.push(current);
+        }
+    }
+    lines
 }
