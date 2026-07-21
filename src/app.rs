@@ -123,7 +123,7 @@ impl App {
                 self.status_message = "Conversation cleared".to_string();
             }
             _ => {
-                self.status_message = format!("Unknown command: /{}", input);
+                self.status_message = format!("Unknown command: {}", input);
                 self.tui.reset();
             }
         }

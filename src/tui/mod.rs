@@ -1,16 +1,18 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
-    text::{Line, Text},
-    widgets::{Block, Borders, Paragraph},
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Style},
+    text::{Line, Span, Text},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
 use crate::{
     agent::message::Message,
-    tui::{input::InputBuffer, line::MessageLinesBuilder, scroll::Scroll},
+    tui::{commands::CommandPopup, input::InputBuffer, line::MessageLinesBuilder, scroll::Scroll},
 };
 
+pub mod commands;
 pub mod input;
 pub mod line;
 pub mod scroll;
@@ -26,6 +28,7 @@ pub struct Tui {
     input: InputBuffer,
     scroll: Scroll,
     line_builder: MessageLinesBuilder,
+    command_popup: CommandPopup,
 }
 
 pub struct TuiHud {
@@ -42,6 +45,7 @@ impl Tui {
             input: InputBuffer::new(),
             line_builder: MessageLinesBuilder::new(),
             scroll: Scroll::new(),
+            command_popup: CommandPopup::new(),
         }
     }
 
@@ -67,6 +71,48 @@ impl Tui {
     }
 
     fn handle_key(&mut self, key: &KeyEvent, streaming: bool) -> Option<TUICommand> {
+        let command_mode = self.input.is_command_mode();
+
+        // When in command mode, Up/Down navigate the popup instead of moving
+        // the cursor through multi-line input.
+        if command_mode && !streaming {
+            match key.code {
+                KeyCode::Up => {
+                    self.command_popup.move_up();
+                    return None;
+                }
+                KeyCode::Down => {
+                    let filtered = self.command_popup.filtered(self.input.as_str());
+                    self.command_popup.move_down(filtered.len());
+                    return None;
+                }
+                KeyCode::Tab => {
+                    // Autocomplete: replace input with the selected command
+                    let filtered = self.command_popup.filtered(self.input.as_str());
+                    if !filtered.is_empty() {
+                        let idx = self.command_popup.selected_index();
+                        let cmd = filtered[idx.min(filtered.len() - 1)];
+                        self.input.replace(&format!("/{}", cmd.name));
+                    }
+                    return None;
+                }
+                KeyCode::Enter => {
+                    // Submit the selected command from the popup
+                    let filtered = self.command_popup.filtered(self.input.as_str());
+                    if !filtered.is_empty() {
+                        let idx = self.command_popup.selected_index();
+                        let cmd = filtered[idx.min(filtered.len() - 1)];
+                        let content = format!("/{}", cmd.name);
+                        self.input.take();
+                        self.scroll.set_auto();
+                        self.command_popup.reset();
+                        return Some(TUICommand::Submit(content));
+                    }
+                }
+                _ => {}
+            }
+        }
+
         match key.code {
             KeyCode::Esc => return Some(TUICommand::Exit),
             KeyCode::Enter => {
@@ -77,6 +123,7 @@ impl Tui {
                 } else if !streaming && !self.input.is_empty() {
                     let content = self.input.take().trim().to_string();
                     self.scroll.set_auto();
+                    self.command_popup.reset();
                     return Some(TUICommand::Submit(content));
                 }
             }
@@ -140,6 +187,12 @@ impl Tui {
             }
             _ => {}
         }
+
+        if self.input.is_command_mode() {
+            let filtered = self.command_popup.filtered(self.input.as_str());
+            self.command_popup.clamp(filtered.len());
+        }
+
         None
     }
 
@@ -200,6 +253,10 @@ impl Tui {
         );
         frame.render_widget(input_paragraph, input_area);
 
+        if self.input.is_command_mode() && !hud.streaming {
+            self.render_command_popup(frame, input_area);
+        }
+
         let (cursor_x, cursor_y) = self.input.cursor_xy(input_area_width);
         frame.set_cursor_position((input_area.x + cursor_x, input_area.y + cursor_y + 1));
 
@@ -231,8 +288,55 @@ impl Tui {
         }
     }
 
+    fn render_command_popup(&mut self, frame: &mut Frame, input_area: Rect) {
+        let filtered_len = self.command_popup.filtered(self.input.as_str()).len();
+        if filtered_len == 0 {
+            return;
+        }
+        self.command_popup.clamp(filtered_len);
+
+        let filtered = self.command_popup.filtered(self.input.as_str());
+        let popup_height = filtered.len() as u16 + 2; // +2 for border
+        let popup_width = 40u16;
+        let popup_area = Rect {
+            x: input_area.x + 1,
+            y: input_area.y.saturating_sub(popup_height),
+            width: popup_width.min(input_area.width),
+            height: popup_height,
+        };
+
+        frame.render_widget(Clear, popup_area);
+
+        let selected = self.command_popup.selected_index();
+        let lines: Vec<Line> = filtered
+            .iter()
+            .enumerate()
+            .map(|(i, cmd)| {
+                let style = if i == selected {
+                    Style::default().fg(Color::Cyan)
+                } else {
+                    Style::default()
+                };
+                Line::from(vec![
+                    Span::styled(format!("/{}", cmd.name), style),
+                    Span::raw(" "),
+                    Span::styled(
+                        cmd.description.to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ])
+                .style(style)
+            })
+            .collect();
+
+        let popup =
+            Paragraph::new(lines).block(Block::default().title("Commands").style(Style::default()));
+        frame.render_widget(popup, popup_area);
+    }
+
     pub fn reset(&mut self) {
         self.scroll.reset();
         self.line_builder.clear_cache();
+        self.command_popup.reset();
     }
 }

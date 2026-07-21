@@ -15,6 +15,10 @@ impl InputBuffer {
         }
     }
 
+    pub fn is_command_mode(&self) -> bool {
+        self.content.starts_with('/')
+    }
+
     pub fn is_empty(&self) -> bool {
         self.content.trim().is_empty()
     }
@@ -23,6 +27,16 @@ impl InputBuffer {
         let s = std::mem::take(&mut self.content);
         self.cursor = 0;
         s
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.content
+    }
+
+    /// Replace the entire buffer content, placing the cursor at the end.
+    pub fn replace(&mut self, text: &str) {
+        self.content = text.to_string();
+        self.cursor = self.content.len();
     }
 
     pub fn insert(&mut self, c: char) {
@@ -219,7 +233,7 @@ impl InputBuffer {
 
     pub fn move_down(&mut self) -> bool {
         if self.cursor < self.content.len() {
-            if let Some(pos) = self.content[self.cursor + 1..].find('\n') {
+            if let Some(pos) = self.content[self.cursor..].find('\n') {
                 self.cursor = self.cursor + 1 + pos;
             } else {
                 self.cursor = self.content.len();
