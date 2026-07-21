@@ -3,17 +3,14 @@ use crossterm::{
     ExecutableCommand,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use dotenvy::dotenv;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use std::{
-    env,
-    io::{self, Write},
-};
+use std::io::{self, Write};
 
 use crate::agent::message::Conversation;
-use crate::agent::provider::{LLMProvider, LLMProviderConfig};
+use crate::agent::provider::LLMProvider;
 use crate::app::App;
+use crate::config::AppConfig;
 use crate::tools::{
     ToolRegistry, bash::BashTool, edit_file::EditFileTool, read_file::ReadFileTool,
     write_file::WriteFileTool,
@@ -22,12 +19,18 @@ use std::sync::Arc;
 
 mod agent;
 mod app;
+mod config;
 mod tools;
 mod tui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv().ok();
+    let home = std::env::var("HOME").unwrap();
+    let config_path = std::env::args()
+        .nth(1)
+        .unwrap_or(format!("{}/.config/rode/config.json", home));
+
+    let config = AppConfig::from_file(&config_path)?;
 
     let mut tool_registry = ToolRegistry::new();
     tool_registry.register(Arc::new(BashTool));
@@ -35,16 +38,14 @@ async fn main() -> Result<()> {
     tool_registry.register(Arc::new(WriteFileTool));
     tool_registry.register(Arc::new(EditFileTool));
 
-    let provider_config = LLMProviderConfig::from_env()?;
-    let provider = LLMProvider::new(provider_config, tool_registry.clone());
-    let model = env::var("MODEL").map_err(|_| anyhow::anyhow!("MODEL not found in environment"))?;
+    let provider = LLMProvider::new(config.provider, tool_registry.clone());
 
     let system_message =
         "You are a coding agent. Project directory = current directory. Respond concisely.";
     let mut conversation = Conversation::new(system_message.to_owned(), usize::MAX);
     conversation.init();
 
-    run(conversation, tool_registry, provider, model).await?;
+    run(conversation, tool_registry, provider, config.model).await?;
 
     Ok(())
 }

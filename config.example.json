@@ -1,0 +1,7 @@
+{
+  "model": "glm-5.2",
+  "provider": {
+    "key": "your-api-key-here",
+    "url": "https://llm.ai.mws-team.ru/v1"
+  }
+}

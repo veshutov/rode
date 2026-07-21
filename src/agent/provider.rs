@@ -12,27 +12,16 @@ use async_openai::types::chat::{
     FunctionCall, FunctionObjectArgs,
 };
 use futures::StreamExt;
+use serde::Deserialize;
 use serde_json::json;
-use std::env;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use uuid::Uuid;
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct LLMProviderConfig {
-    api_key: String,
-    base_url: String,
-}
-
-impl LLMProviderConfig {
-    pub fn from_env() -> Result<Self> {
-        Ok(Self {
-            api_key: env::var("RODE_API_KEY")
-                .map_err(|_| anyhow::anyhow!("RODE_API_KEY not found in environment"))?,
-            base_url: env::var("URL")
-                .map_err(|_| anyhow::anyhow!("URL not found in environment"))?,
-        })
-    }
+    pub key: String,
+    pub url: String,
 }
 
 #[derive(Clone)]
@@ -43,8 +32,8 @@ pub struct LLMProvider {
 
 impl LLMProvider {
     pub fn new(config: LLMProviderConfig, tool_registry: ToolRegistry) -> Self {
-        let api_key = config.api_key.clone();
-        let base_url = config.base_url.clone();
+        let api_key = config.key.clone();
+        let base_url = config.url.clone();
         Self {
             client: async_openai::Client::with_config(
                 async_openai::config::OpenAIConfig::new()
