@@ -2,7 +2,8 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    text::{Line, Text},
+    style::{Color, Style},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
 
@@ -75,23 +76,47 @@ impl TUI {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 return Some(TUICommand::Cancel);
             }
+            // macOS terminals translate Cmd+Left/Right into Ctrl+A/E
+            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.input.move_to_start_of_line();
+            }
+            KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.input.move_to_end_of_line();
+            }
+            // macOS terminals translate Cmd+Backspace into Ctrl+U
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.input.delete_to_start_of_line();
+            }
+            // Some terminals send Option+Left/Right as Alt+B/F
+            KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::ALT) => {
+                self.input.move_word_left();
+            }
+            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::ALT) => {
+                self.input.move_word_right();
+            }
             KeyCode::Char(c) => {
                 self.input.insert(c);
             }
             KeyCode::Backspace => {
-                if key.modifiers.contains(KeyModifiers::SUPER) {
-                    self.input.delete_to_start_of_line();
-                } else if key.modifiers.contains(KeyModifiers::ALT) {
+                if key.modifiers.contains(KeyModifiers::ALT) {
                     self.input.delete_word_before_cursor();
                 } else {
                     self.input.backspace();
                 }
             }
             KeyCode::Left => {
-                self.input.move_left();
+                if key.modifiers.contains(KeyModifiers::ALT) {
+                    self.input.move_word_left();
+                } else {
+                    self.input.move_left();
+                }
             }
             KeyCode::Right => {
-                self.input.move_right();
+                if key.modifiers.contains(KeyModifiers::ALT) {
+                    self.input.move_word_right();
+                } else {
+                    self.input.move_right();
+                }
             }
             KeyCode::Up => {
                 if !self.input.move_up() {
@@ -117,6 +142,7 @@ impl TUI {
         messages: &[Message],
         current_response: &str,
         streaming: bool,
+        status_message: &str,
     ) {
         let input_area_width = frame.area().width.saturating_sub(2) as usize;
         let wrapped_input = self.input.wrapped(input_area_width);
@@ -131,18 +157,38 @@ impl TUI {
         let chat_area = chunks[0];
         let input_area = chunks[1];
 
-        let lines = self.line_builder.build(
+        let mut lines = self.line_builder.build(
             messages,
             chat_area.width as usize,
             current_response,
             streaming,
         );
+
+        // Prepend status message (e.g. slash command output) at the top
+        if !status_message.is_empty() {
+            let mut status_lines: Vec<Line> = Vec::new();
+            for raw_line in status_message.lines() {
+                status_lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(raw_line, Style::default().fg(Color::Cyan)),
+                ]));
+            }
+            status_lines.push(Line::from(""));
+            lines.splice(0..0, status_lines);
+        }
+
         let scroll = self.scroll.update_scroll(lines.len(), chat_area.height);
         let text = Text::from(lines);
         let paragraph = Paragraph::new(text);
         frame.render_widget(paragraph.scroll((scroll, 0)), chat_area);
 
-        let input_title = if streaming { "working..." } else { "" };
+        let input_title = if streaming {
+            "working..."
+        } else if !status_message.is_empty() {
+            status_message.lines().next().unwrap_or("")
+        } else {
+            ""
+        };
         let input_text = Text::from(
             wrapped_input
                 .into_iter()

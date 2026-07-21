@@ -93,8 +93,14 @@ impl InputBuffer {
             .rfind('\n')
             .map(|i| i + 1)
             .unwrap_or(0);
-        self.content.replace_range(start..self.cursor, "");
-        self.cursor = start;
+        if start == self.cursor {
+            // Already at the start of a line — delete the newline to join lines
+            self.content.remove(start - 1);
+            self.cursor = start - 1;
+        } else {
+            self.content.replace_range(start..self.cursor, "");
+            self.cursor = start;
+        }
     }
 
     pub fn move_left(&mut self) {
@@ -114,6 +120,89 @@ impl InputBuffer {
                 self.cursor += c.len_utf8();
             }
         }
+    }
+
+    pub fn move_to_start_of_line(&mut self) {
+        let start = self.content[..self.cursor]
+            .rfind('\n')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        self.cursor = start;
+    }
+
+    pub fn move_to_end_of_line(&mut self) {
+        let end = self.content[self.cursor..]
+            .find('\n')
+            .map(|i| self.cursor + i)
+            .unwrap_or(self.content.len());
+        self.cursor = end;
+    }
+
+    pub fn move_word_left(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        let text = &self.content[..self.cursor];
+        let mut pos = text.len();
+
+        // Skip whitespace
+        while pos > 0 {
+            if let Some((i, c)) = text[..pos].char_indices().last() {
+                if c.is_whitespace() {
+                    pos = i;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        // Skip word characters
+        while pos > 0 {
+            if let Some((i, c)) = text[..pos].char_indices().last() {
+                if !c.is_whitespace() {
+                    pos = i;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        self.cursor = pos;
+    }
+
+    pub fn move_word_right(&mut self) {
+        if self.cursor >= self.content.len() {
+            return;
+        }
+        let text = &self.content[self.cursor..];
+        let mut pos = 0usize;
+        let mut chars = text.char_indices().peekable();
+
+        // Skip whitespace
+        while let Some(&(i, c)) = chars.peek() {
+            if c.is_whitespace() {
+                pos = i + c.len_utf8();
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        // Skip word characters
+        while let Some(&(i, c)) = chars.peek() {
+            if !c.is_whitespace() {
+                pos = i + c.len_utf8();
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        self.cursor += pos;
     }
 
     pub fn move_up(&mut self) -> bool {

@@ -120,34 +120,7 @@ impl MessageLinesBuilder {
                     }
                     msg_lines.push(Line::from(""));
                 }
-                Role::Tool => {
-                    if !msg.content.is_empty() {
-                        let wrapped = wrap_hard(&msg.content, available_width.saturating_sub(4));
-                        let total = wrapped.len();
-                        let max_lines = 5;
-                        for line in wrapped.iter().take(max_lines) {
-                            msg_lines.push(Line::from(vec![
-                                Span::raw("  "),
-                                Span::styled(line.clone(), Style::default().fg(Color::DarkGray)),
-                            ]));
-                        }
-                        if total > max_lines {
-                            let remaining = total - max_lines;
-                            msg_lines.push(Line::from(vec![
-                                Span::raw("  "),
-                                Span::styled(
-                                    format!(
-                                        "... ({} more line{})",
-                                        remaining,
-                                        if remaining == 1 { "" } else { "s" }
-                                    ),
-                                    Style::default().fg(Color::DarkGray),
-                                ),
-                            ]));
-                        }
-                        msg_lines.push(Line::from(""));
-                    }
-                }
+                Role::Tool => {}
             }
 
             // Update cache
