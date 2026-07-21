@@ -1,62 +1,95 @@
-use crossterm::event;
-use ratatui::Terminal;
-use std::time::Duration;
+use crossterm::event::EventStream;
+use futures::StreamExt;
+use ratatui::{Terminal, backend::CrosstermBackend};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
-    state::{AppState, LLMEvent},
-    tui::{TUI, TUIEvent},
+    agent::{Agent, AgentEvent},
+    message::Conversation,
+    provider::{LLMProvider, LLMProviderConfig},
+    tools::ToolRegistry,
+    tui::{TUI, TUICommand},
 };
 
 pub struct App {
-    state: AppState,
+    tui: TUI,
+    agent: Agent,
+    event_rx: UnboundedReceiver<AgentEvent>,
+    streaming: bool,
+    current_response: String,
 }
 
 impl App {
-    pub fn new(
-        conversation: crate::message::Conversation,
-        tool_registry: crate::tools::ToolRegistry,
-    ) -> (Self, std::sync::mpsc::Receiver<LLMEvent>) {
-        let (state, event_rx) = AppState::new(conversation, tool_registry);
-        let app = Self { state };
-        (app, event_rx)
+    pub fn new(conversation: Conversation, tool_registry: ToolRegistry) -> Self {
+        let provider = LLMProvider::new(LLMProviderConfig::default());
+        let (agent, event_rx) = Agent::new(conversation, tool_registry, provider);
+        Self {
+            tui: TUI::new(),
+            agent,
+            event_rx,
+            streaming: false,
+            current_response: String::new(),
+        }
     }
 
-    pub fn run(
+    pub async fn run(
         &mut self,
-        terminal: &mut Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        event_rx: &std::sync::mpsc::Receiver<LLMEvent>,
+        terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     ) -> anyhow::Result<()> {
-        let mut tui = TUI::new();
-        loop {
-            terminal.draw(|frame| {
-                tui.render(
-                    frame,
-                    &mut self.state.conversation.get_messages(),
-                    &self.state.current_response,
-                    self.state.streaming,
-                )
-            })?;
+        let mut reader = EventStream::new();
 
-            if event::poll(Duration::from_millis(25))? {
-                let event = event::read()?;
-                if let Some(tui_event) = tui.on_event(&event, self.state.streaming) {
-                    match tui_event {
-                        TUIEvent::Submit(content) => {
-                            if content == "/clear" {
-                                self.state.clear();
-                            } else {
-                                self.state.submit_user_message(&content);
-                            }
-                        }
-                        TUIEvent::Exit() => return Ok(()),
-                    }
-                }
+        loop {
+            {
+                let conversation = self.agent.conversation.lock().unwrap();
+                let messages = conversation.get_messages();
+
+                terminal.draw(|frame| {
+                    self.tui
+                        .render(frame, &messages, &self.current_response, self.streaming)
+                })?;
             }
 
-            while let Ok(event) = event_rx.try_recv() {
-                let followups = self.state.handle_llm_event(event);
-                if !followups.is_empty() {
-                    self.state.start_stream();
+            tokio::select! {
+                Some(Ok(term_event)) = reader.next() => {
+                    if let Some(tui_command) = self.tui.on_event(&term_event, self.streaming) {
+                        match tui_command {
+                            TUICommand::Submit(content) => {
+                                if content == "/clear" {
+                                    self.agent.clear();
+                                    self.tui.reset();
+                                } else {
+                                    self.streaming = true;
+                                    self.agent.submit_user_message(&content);
+                                }
+                            }
+                            TUICommand::Exit => return Ok(()),
+                            TUICommand::Cancel => {
+                                if self.streaming {
+                                    self.agent.cancel();
+                                    self.streaming = false;
+                                    self.current_response.clear();
+                                }
+                            }
+                        }
+                    }
+                }
+                Some(agent_event) = self.event_rx.recv() => {
+                    match agent_event {
+                        AgentEvent::Token(token) => {
+                            self.current_response.push_str(&token);
+                        }
+                        AgentEvent::MessageDone => {
+                            self.current_response.clear();
+                        }
+                        AgentEvent::Finished => {
+                            self.streaming = false;
+                            self.current_response.clear();
+                        }
+                        AgentEvent::Error => {
+                            self.streaming = false;
+                            self.current_response.clear();
+                        }
+                    }
                 }
             }
         }

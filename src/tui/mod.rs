@@ -16,14 +16,15 @@ pub mod line;
 pub mod scroll;
 mod utils;
 
-pub enum TUIEvent {
+pub enum TUICommand {
     Submit(String),
-    Exit(),
+    Cancel,
+    Exit,
 }
 
 pub struct TUI {
-    pub input: InputBuffer,
-    pub scroll: Scroll,
+    input: InputBuffer,
+    scroll: Scroll,
     line_builder: MessageLinesBuilder,
 }
 
@@ -36,7 +37,7 @@ impl TUI {
         }
     }
 
-    pub fn on_event(&mut self, event: &Event, streaming: bool) -> Option<TUIEvent> {
+    pub fn on_event(&mut self, event: &Event, streaming: bool) -> Option<TUICommand> {
         match event {
             Event::Key(key) => {
                 if key.kind == KeyEventKind::Press {
@@ -57,9 +58,9 @@ impl TUI {
         None
     }
 
-    fn handle_key(&mut self, key: &KeyEvent, streaming: bool) -> Option<TUIEvent> {
+    fn handle_key(&mut self, key: &KeyEvent, streaming: bool) -> Option<TUICommand> {
         match key.code {
-            KeyCode::Esc => return Some(TUIEvent::Exit()),
+            KeyCode::Esc => return Some(TUICommand::Exit),
             KeyCode::Enter => {
                 if key.modifiers.contains(KeyModifiers::SHIFT)
                     || key.modifiers.contains(KeyModifiers::ALT)
@@ -67,14 +68,12 @@ impl TUI {
                     self.input.insert_newline();
                 } else if !streaming && !self.input.is_empty() {
                     let content = self.input.take().trim().to_string();
-                    return Some(TUIEvent::Submit(content));
+                    self.scroll.set_auto();
+                    return Some(TUICommand::Submit(content));
                 }
             }
-            KeyCode::Char('u')
-                if key.modifiers.contains(KeyModifiers::SUPER)
-                    || key.modifiers.contains(KeyModifiers::CONTROL) =>
-            {
-                self.input.delete_to_start_of_line();
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return Some(TUICommand::Cancel);
             }
             KeyCode::Char(c) => {
                 self.input.insert(c);
@@ -105,7 +104,7 @@ impl TUI {
                 }
             }
             KeyCode::End => {
-                self.scroll.scroll_to_end();
+                self.scroll.set_auto();
             }
             _ => {}
         }

@@ -31,12 +31,8 @@ impl Scroll {
         self.current = self.current.saturating_add(1);
     }
 
-    pub fn scroll_to_end(&mut self) {
+    pub fn set_auto(&mut self) {
         self.auto = true;
-    }
-
-    pub fn set_auto(&mut self, auto: bool) {
-        self.auto = auto;
     }
 
     pub fn reset(&mut self) {
