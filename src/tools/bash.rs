@@ -1,5 +1,6 @@
 use crate::tools::{Tool, ToolParameter};
 use anyhow::Result;
+use async_trait::async_trait;
 use serde_json::Value;
 use std::time::Duration;
 use tokio::process::Command;
@@ -9,6 +10,7 @@ const DEFAULT_TIMEOUT_SECS: u64 = 30;
 #[derive(Clone)]
 pub struct BashTool;
 
+#[async_trait]
 impl Tool for BashTool {
     fn name(&self) -> &str {
         "bash"

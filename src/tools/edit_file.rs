@@ -1,11 +1,13 @@
 use crate::tools::{Tool, ToolParameter};
 use anyhow::Result;
+use async_trait::async_trait;
 use serde_json::Value;
 use tokio::fs;
 
 #[derive(Clone)]
 pub struct EditFileTool;
 
+#[async_trait]
 impl Tool for EditFileTool {
     fn name(&self) -> &str {
         "edit_file"

@@ -12,9 +12,10 @@ use crate::app::App;
 use crate::message::Conversation;
 use crate::provider::{LLMProvider, LLMProviderConfig};
 use crate::tools::{
-    ToolKind, ToolRegistry, bash::BashTool, edit_file::EditFileTool, read_file::ReadFileTool,
+    ToolRegistry, bash::BashTool, edit_file::EditFileTool, read_file::ReadFileTool,
     write_file::WriteFileTool,
 };
+use std::sync::Arc;
 
 mod agent;
 mod app;
@@ -31,10 +32,10 @@ async fn main() -> Result<()> {
     let provider = LLMProvider::new(provider_config);
 
     let mut tool_registry = ToolRegistry::new();
-    tool_registry.register(ToolKind::Bash(BashTool));
-    tool_registry.register(ToolKind::ReadFile(ReadFileTool));
-    tool_registry.register(ToolKind::WriteFile(WriteFileTool));
-    tool_registry.register(ToolKind::EditFile(EditFileTool));
+    tool_registry.register(Arc::new(BashTool));
+    tool_registry.register(Arc::new(ReadFileTool));
+    tool_registry.register(Arc::new(WriteFileTool));
+    tool_registry.register(Arc::new(EditFileTool));
 
     let system_message =
         "You are a coding agent. Project directory = current directory. Respond concisely.";
