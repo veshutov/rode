@@ -1,8 +1,12 @@
 use crate::tools::{Tool, ToolParameter};
 use anyhow::Result;
 use serde_json::Value;
-use std::process::Command;
+use std::time::Duration;
+use tokio::process::Command;
 
+const DEFAULT_TIMEOUT_SECS: u64 = 30;
+
+#[derive(Clone)]
 pub struct BashTool;
 
 impl Tool for BashTool {
@@ -15,15 +19,23 @@ impl Tool for BashTool {
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
-        vec![ToolParameter {
-            name: "command".to_string(),
-            description: "Bash command to execute".to_string(),
-            r#type: "string".to_string(),
-            required: true,
-        }]
+        vec![
+            ToolParameter {
+                name: "command".to_string(),
+                description: "Bash command to execute".to_string(),
+                r#type: "string".to_string(),
+                required: true,
+            },
+            ToolParameter {
+                name: "timeout".to_string(),
+                description: "Timeout in seconds (default 30)".to_string(),
+                r#type: "integer".to_string(),
+                required: false,
+            },
+        ]
     }
 
-    fn execute(&self, args: Value) -> Result<String> {
+    async fn execute(&self, args: Value) -> Result<String> {
         let command = args["command"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'command' argument"))?;
@@ -50,13 +62,36 @@ impl Tool for BashTool {
             }
         }
 
-        let output = Command::new("sh").arg("-c").arg(command).output()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let timeout = args["timeout"].as_u64().unwrap_or(DEFAULT_TIMEOUT_SECS);
+
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .stderr(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()?;
+
+        let output = match tokio::time::timeout(
+            Duration::from_secs(timeout),
+            child.wait_with_output(),
+        )
+        .await
+        {
+            Ok(result) => result?,
+            Err(_) => {
+                return Ok(format!(
+                    "Error: Command timed out after {} seconds",
+                    timeout
+                ));
+            }
+        };
 
         if output.status.success() {
-            Ok(stdout.to_string())
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            Ok(stdout)
         } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             Ok(format!(
                 "Error (exit code: {:?}):\n{}",
                 output.status.code(),

@@ -1,8 +1,9 @@
 use crate::tools::{Tool, ToolParameter};
 use anyhow::Result;
 use serde_json::Value;
-use std::fs;
+use tokio::fs;
 
+#[derive(Clone)]
 pub struct WriteFileTool;
 
 impl Tool for WriteFileTool {
@@ -31,14 +32,14 @@ impl Tool for WriteFileTool {
         ]
     }
 
-    fn execute(&self, args: Value) -> Result<String> {
+    async fn execute(&self, args: Value) -> Result<String> {
         let path = args["path"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' argument"))?;
         let content = args["content"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'content' argument"))?;
-        fs::write(path, content)?;
+        fs::write(path, content).await?;
         Ok(format!("File '{}' written successfully", path))
     }
 }

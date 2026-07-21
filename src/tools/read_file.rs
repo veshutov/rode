@@ -1,8 +1,9 @@
 use crate::tools::{Tool, ToolParameter};
 use anyhow::Result;
 use serde_json::Value;
-use std::fs;
+use tokio::fs;
 
+#[derive(Clone)]
 pub struct ReadFileTool;
 
 impl Tool for ReadFileTool {
@@ -23,10 +24,10 @@ impl Tool for ReadFileTool {
         }]
     }
 
-    fn execute(&self, args: Value) -> Result<String> {
+    async fn execute(&self, args: Value) -> Result<String> {
         let path = args["path"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' argument"))?;
-        Ok(fs::read_to_string(path)?)
+        Ok(fs::read_to_string(path).await?)
     }
 }

@@ -1,8 +1,9 @@
 use crate::tools::{Tool, ToolParameter};
 use anyhow::Result;
 use serde_json::Value;
-use std::fs;
+use tokio::fs;
 
+#[derive(Clone)]
 pub struct EditFileTool;
 
 impl Tool for EditFileTool {
@@ -37,7 +38,7 @@ impl Tool for EditFileTool {
         ]
     }
 
-    fn execute(&self, args: Value) -> Result<String> {
+    async fn execute(&self, args: Value) -> Result<String> {
         let path = args["path"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' argument"))?;
@@ -48,14 +49,14 @@ impl Tool for EditFileTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'new_content' argument"))?;
 
-        let content = fs::read_to_string(path)?;
+        let content = fs::read_to_string(path).await?;
         if !content.contains(old_content) {
             return Ok(format!("Pattern not found in file '{}'", path));
         }
 
         // Replace only the first occurrence
         let updated = content.replacen(old_content, new_content, 1);
-        fs::write(path, updated)?;
+        fs::write(path, updated).await?;
         Ok(format!("File '{}' edited successfully", path))
     }
 }
