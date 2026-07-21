@@ -22,13 +22,13 @@ pub enum TUICommand {
     Exit,
 }
 
-pub struct TUI {
+pub struct Tui {
     input: InputBuffer,
     scroll: Scroll,
     line_builder: MessageLinesBuilder,
 }
 
-impl TUI {
+impl Tui {
     pub fn new() -> Self {
         Self {
             input: InputBuffer::new(),

@@ -50,11 +50,11 @@ impl MessageLinesBuilder {
 
         for msg in messages.iter() {
             // Check cache validity by message ID
-            if let Some(cached_line) = self.cache.get(&msg.id) {
-                if cached_line.width == available_width {
-                    lines.extend(cached_line.lines.clone());
-                    continue;
-                }
+            if let Some(cached_line) = self.cache.get(&msg.id)
+                && cached_line.width == available_width
+            {
+                lines.extend(cached_line.lines.clone());
+                continue;
             }
 
             let mut msg_lines: Vec<Line<'static>> = Vec::new();
@@ -68,7 +68,7 @@ impl MessageLinesBuilder {
 
                     msg_lines.push(padding_line.clone());
 
-                    for line in wrap_hard(&msg.content.trim(), user_width) {
+                    for line in wrap_hard(msg.content.trim(), user_width) {
                         let line_width = line.width();
                         let right_pad = available_width.saturating_sub(line_width + 2);
 
@@ -85,7 +85,7 @@ impl MessageLinesBuilder {
                     msg_lines.push(Line::from(""));
                 }
                 Role::Assistant => {
-                    let rendered = render_markdown(&msg.content.trim_start());
+                    let rendered = render_markdown(msg.content.trim_start());
                     for mut line in rendered.lines {
                         line.spans.insert(0, Span::raw("  "));
                         msg_lines.push(line);

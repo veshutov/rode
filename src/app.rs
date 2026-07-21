@@ -8,11 +8,11 @@ use crate::{
     message::Conversation,
     provider::LLMProvider,
     tools::ToolRegistry,
-    tui::{TUI, TUICommand},
+    tui::{Tui, TUICommand},
 };
 
 pub struct App {
-    tui: TUI,
+    tui: Tui,
     agent: Agent,
     event_rx: UnboundedReceiver<AgentEvent>,
     streaming: bool,
@@ -28,7 +28,7 @@ impl App {
     ) -> Self {
         let (agent, event_rx) = Agent::new(conversation, tool_registry, provider);
         Self {
-            tui: TUI::new(),
+            tui: Tui::new(),
             agent,
             event_rx,
             streaming: false,
