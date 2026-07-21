@@ -19,7 +19,7 @@ use crate::{
 
 static MAD_SKIN: LazyLock<MadSkin> = LazyLock::new(MadSkin::default);
 
-const USER_BG: Color = Color::Rgb(35, 35, 35);
+const USER_BG: Color = Color::Rgb(50, 50, 50);
 
 #[derive(Debug)]
 pub struct MessageLinesBuilder {
