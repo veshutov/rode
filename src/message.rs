@@ -17,6 +17,7 @@ pub struct Message {
     pub content: String,
     pub tool_calls: Vec<ToolCall>,
     pub tool_call_id: Option<String>,
+    pub used_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,29 +47,25 @@ impl Conversation {
             content: self.system_message.clone(),
             tool_calls: Vec::new(),
             tool_call_id: None,
+            used_tokens: None,
         });
         self.trim_history();
     }
 
-    pub fn add_message(&mut self, role: Role, content: &str) {
+    pub fn add_user_message(&mut self, content: &str) {
         self.messages.push(Message {
             id: Uuid::now_v7(),
-            role,
+            role: Role::User,
             content: content.to_string(),
             tool_calls: Vec::new(),
             tool_call_id: None,
+            used_tokens: None,
         });
         self.trim_history();
     }
 
-    pub fn add_assistant_message(&mut self, content: &str, tool_calls: Vec<ToolCall>) {
-        self.messages.push(Message {
-            id: Uuid::now_v7(),
-            role: Role::Assistant,
-            content: content.to_string(),
-            tool_calls,
-            tool_call_id: None,
-        });
+    pub fn add_message(&mut self, message: Message) {
+        self.messages.push(message);
         self.trim_history();
     }
 
@@ -79,6 +76,7 @@ impl Conversation {
             content: content.to_string(),
             tool_calls: Vec::new(),
             tool_call_id: Some(tool_call_id.to_string()),
+            used_tokens: None,
         });
         self.trim_history();
     }
@@ -99,6 +97,14 @@ impl Conversation {
 
     pub fn get_messages(&self) -> &[Message] {
         &self.messages
+    }
+
+    pub fn total_tokens(&self) -> Option<u32> {
+        self.messages
+            .iter()
+            .rev()
+            .find(|m| m.used_tokens.is_some())
+            .and_then(|m| m.used_tokens)
     }
 
     pub fn clear_messages(&mut self) {

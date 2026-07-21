@@ -8,7 +8,7 @@ use crate::{
     message::Conversation,
     provider::LLMProvider,
     tools::ToolRegistry,
-    tui::{Tui, TUICommand},
+    tui::{TUICommand, Tui},
 };
 
 pub struct App {
@@ -47,6 +47,7 @@ impl App {
             {
                 let conversation = self.agent.conversation.lock().unwrap();
                 let messages = conversation.get_messages();
+                let context_tokens = conversation.total_tokens();
 
                 terminal.draw(|frame| {
                     self.tui.render(
@@ -55,6 +56,7 @@ impl App {
                         &self.current_response,
                         self.streaming,
                         &self.status_message,
+                        context_tokens,
                     )
                 })?;
             }

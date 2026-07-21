@@ -142,6 +142,7 @@ impl Tui {
         current_response: &str,
         streaming: bool,
         status_message: &str,
+        context_tokens: Option<u32>,
     ) {
         let input_area_width = frame.area().width.saturating_sub(2) as usize;
         let wrapped_input = self.input.wrapped(input_area_width);
@@ -150,11 +151,16 @@ impl Tui {
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Fill(1), Constraint::Length(input_height)])
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(input_height),
+                Constraint::Length(1),
+            ])
             .split(frame.area());
 
         let chat_area = chunks[0];
         let input_area = chunks[1];
+        let footer_area = chunks[2];
 
         let lines = self.line_builder.build(
             messages,
@@ -190,6 +196,14 @@ impl Tui {
 
         let (cursor_x, cursor_y) = self.input.cursor_xy(input_area_width);
         frame.set_cursor_position((input_area.x + cursor_x, input_area.y + cursor_y + 1));
+
+        if let Some(tokens) = context_tokens {
+            let footer = format!(" context: {} tokens ", tokens);
+            frame.render_widget(
+                Paragraph::new(Line::from(footer)).style(ratatui::style::Style::default().dim()),
+                footer_area,
+            );
+        }
     }
 
     pub fn reset(&mut self) {

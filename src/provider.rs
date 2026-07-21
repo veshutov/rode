@@ -7,8 +7,9 @@ use async_openai::types::chat::{
     ChatCompletionMessageToolCall, ChatCompletionMessageToolCalls,
     ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
     ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs,
-    ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionTools,
-    CreateChatCompletionRequest, CreateChatCompletionRequestArgs, FunctionCall, FunctionObjectArgs,
+    ChatCompletionRequestUserMessageArgs, ChatCompletionStreamOptions, ChatCompletionTool,
+    ChatCompletionTools, CreateChatCompletionRequest, CreateChatCompletionRequestArgs,
+    FunctionCall, FunctionObjectArgs,
 };
 use futures::StreamExt;
 use serde_json::json;
@@ -57,7 +58,6 @@ impl LLMProvider {
         }
     }
 
-    /// Stream response tokens. Returns (full_content, tool_calls) when complete.
     pub async fn stream_openai_api(
         &self,
         messages: &[Message],
@@ -70,12 +70,18 @@ impl LLMProvider {
         let mut stream = self.client.chat().create_stream(request).await?;
         let mut content = String::new();
         let mut tool_calls: Vec<ToolCall> = Vec::new();
+        let mut total_tokens: Option<u32> = None;
 
         while let Some(result) = stream.next().await {
             if cancelled.load(Ordering::SeqCst) {
                 break;
             }
             let response = result?;
+
+            if let Some(usage) = &response.usage {
+                total_tokens = Some(usage.total_tokens);
+            }
+
             if let Some(choice) = response.choices.first() {
                 if let Some(delta) = &choice.delta.content {
                     content.push_str(delta);
@@ -116,6 +122,7 @@ impl LLMProvider {
             content,
             tool_calls,
             tool_call_id: None,
+            used_tokens: total_tokens,
         })
     }
 }
@@ -179,6 +186,10 @@ fn build_request(
     Ok(CreateChatCompletionRequestArgs::default()
         .model(model)
         .stream(true)
+        .stream_options(ChatCompletionStreamOptions {
+            include_usage: Some(true),
+            include_obfuscation: None,
+        })
         .messages(openai_messages)
         .tools(
             tool_registry

@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
-use crate::message::{Conversation, Message, Role};
+use crate::message::{Conversation, Message};
 use crate::provider::LLMProvider;
 use crate::tools::ToolRegistry;
 
@@ -43,7 +43,7 @@ impl Agent {
     pub fn submit_user_message(&mut self, content: &str) {
         {
             let mut conv = self.conversation.lock().unwrap();
-            conv.add_message(Role::User, content);
+            conv.add_user_message(content);
         }
         self.start_stream();
     }
@@ -88,7 +88,7 @@ impl Agent {
                         // Add assistant message (short lock)
                         {
                             let mut conv = conversation.lock().unwrap();
-                            conv.add_assistant_message(&msg.content, msg.tool_calls.clone());
+                            conv.add_message(msg.clone());
                         }
 
                         // Execute tools outside the lock
