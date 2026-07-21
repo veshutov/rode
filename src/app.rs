@@ -4,11 +4,9 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
-    agent::message::Conversation,
-    agent::provider::LLMProvider,
-    agent::{Agent, AgentEvent},
+    agent::{Agent, AgentEvent, message::Conversation, provider::LLMProvider},
     tools::ToolRegistry,
-    tui::{TUICommand, Tui},
+    tui::{TUICommand, Tui, TuiHud},
 };
 
 pub struct App {
@@ -45,22 +43,28 @@ impl App {
         terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     ) -> anyhow::Result<()> {
         let mut reader = EventStream::new();
+        let cwd = std::env::current_dir().unwrap();
+        let home = std::env::var("HOME").unwrap();
+        let cwd = cwd
+            .strip_prefix(&home)
+            .map(|p| format!("~/{}", p.display()))
+            .unwrap_or_else(|_| cwd.display().to_string());
 
         loop {
             {
                 let conversation = self.agent.conversation.lock().unwrap();
                 let messages = conversation.get_messages();
-                let context_tokens = conversation.total_tokens();
+                let hud = TuiHud {
+                    cwd: cwd.clone(),
+                    streaming: self.streaming,
+                    status_message: self.status_message.clone(),
+                    model: self.model.clone(),
+                    context_tokens: conversation.total_tokens(),
+                };
 
                 terminal.draw(|frame| {
-                    self.tui.render(
-                        frame,
-                        messages,
-                        &self.current_response,
-                        self.streaming,
-                        &self.status_message,
-                        context_tokens,
-                    )
+                    self.tui
+                        .render(frame, &hud, messages, &self.current_response)
                 })?;
             }
 

@@ -28,6 +28,14 @@ pub struct Tui {
     line_builder: MessageLinesBuilder,
 }
 
+pub struct TuiHud {
+    pub model: String,
+    pub context_tokens: Option<u32>,
+    pub streaming: bool,
+    pub status_message: String,
+    pub cwd: String,
+}
+
 impl Tui {
     pub fn new() -> Self {
         Self {
@@ -138,11 +146,9 @@ impl Tui {
     pub fn render(
         &mut self,
         frame: &mut Frame,
+        hud: &TuiHud,
         messages: &[Message],
         current_response: &str,
-        streaming: bool,
-        status_message: &str,
-        context_tokens: Option<u32>,
     ) {
         let input_area_width = frame.area().width.saturating_sub(2) as usize;
         let wrapped_input = self.input.wrapped(input_area_width);
@@ -154,7 +160,7 @@ impl Tui {
             .constraints([
                 Constraint::Fill(1),
                 Constraint::Length(input_height),
-                Constraint::Length(1),
+                Constraint::Length(2),
             ])
             .split(frame.area());
 
@@ -166,7 +172,7 @@ impl Tui {
             messages,
             chat_area.width as usize,
             current_response,
-            streaming,
+            hud.streaming,
         );
 
         let scroll = self.scroll.update_scroll(lines.len(), chat_area.height);
@@ -174,10 +180,10 @@ impl Tui {
         let paragraph = Paragraph::new(text);
         frame.render_widget(paragraph.scroll((scroll, 0)), chat_area);
 
-        let input_title = if streaming {
+        let input_title = if hud.streaming {
             "working..."
-        } else if !status_message.is_empty() {
-            status_message.lines().next().unwrap_or("")
+        } else if !hud.status_message.is_empty() {
+            hud.status_message.lines().next().unwrap_or("")
         } else {
             ""
         };
@@ -197,11 +203,30 @@ impl Tui {
         let (cursor_x, cursor_y) = self.input.cursor_xy(input_area_width);
         frame.set_cursor_position((input_area.x + cursor_x, input_area.y + cursor_y + 1));
 
-        if let Some(tokens) = context_tokens {
-            let footer = format!(" context: {} tokens ", tokens);
+        let [top, bottom] =
+            Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(footer_area);
+
+        let [left, right] = Layout::horizontal([Constraint::Min(0), Constraint::Min(0)]).areas(top);
+
+        frame.render_widget(
+            Paragraph::new(Line::from(hud.cwd.clone()))
+                .style(ratatui::style::Style::default().dim())
+                .left_aligned(),
+            left,
+        );
+        let model = hud.model.clone();
+        frame.render_widget(
+            Paragraph::new(Line::from(model))
+                .style(ratatui::style::Style::default().dim())
+                .right_aligned(),
+            right,
+        );
+        if let Some(tokens) = hud.context_tokens {
             frame.render_widget(
-                Paragraph::new(Line::from(footer)).style(ratatui::style::Style::default().dim()),
-                footer_area,
+                Paragraph::new(Line::from(format!("{}k", tokens / 1000)))
+                    .style(ratatui::style::Style::default().dim())
+                    .right_aligned(),
+                bottom,
             );
         }
     }
