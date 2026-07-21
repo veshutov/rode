@@ -6,7 +6,10 @@ use crossterm::{
 use dotenvy::dotenv;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use std::io::{self, Write};
+use std::{
+    env,
+    io::{self, Write},
+};
 
 use crate::agent::message::Conversation;
 use crate::agent::provider::{LLMProvider, LLMProviderConfig};
@@ -26,21 +29,22 @@ mod tui;
 async fn main() -> Result<()> {
     dotenv().ok();
 
-    let provider_config = LLMProviderConfig::from_env()?;
-    let provider = LLMProvider::new(provider_config);
-
     let mut tool_registry = ToolRegistry::new();
     tool_registry.register(Arc::new(BashTool));
     tool_registry.register(Arc::new(ReadFileTool));
     tool_registry.register(Arc::new(WriteFileTool));
     tool_registry.register(Arc::new(EditFileTool));
 
+    let provider_config = LLMProviderConfig::from_env()?;
+    let provider = LLMProvider::new(provider_config, tool_registry.clone());
+    let model = env::var("MODEL").map_err(|_| anyhow::anyhow!("MODEL not found in environment"))?;
+
     let system_message =
         "You are a coding agent. Project directory = current directory. Respond concisely.";
     let mut conversation = Conversation::new(system_message.to_owned(), usize::MAX);
     conversation.init();
 
-    run(conversation, tool_registry, provider).await?;
+    run(conversation, tool_registry, provider, model).await?;
 
     Ok(())
 }
@@ -49,6 +53,7 @@ pub async fn run(
     conversation: Conversation,
     tool_registry: ToolRegistry,
     provider: LLMProvider,
+    model: String,
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -59,7 +64,7 @@ pub async fn run(
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(conversation, tool_registry, provider);
+    let mut app = App::new(conversation, tool_registry, provider, model);
     let result = app.run(&mut terminal).await;
 
     disable_raw_mode()?;

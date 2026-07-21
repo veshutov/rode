@@ -18,6 +18,7 @@ pub struct App {
     streaming: bool,
     current_response: String,
     status_message: String,
+    model: String,
 }
 
 impl App {
@@ -25,6 +26,7 @@ impl App {
         conversation: Conversation,
         tool_registry: ToolRegistry,
         provider: LLMProvider,
+        model: String,
     ) -> Self {
         let (agent, event_rx) = Agent::new(conversation, tool_registry, provider);
         Self {
@@ -34,6 +36,7 @@ impl App {
             streaming: false,
             current_response: String::new(),
             status_message: String::new(),
+            model,
         }
     }
 
@@ -71,7 +74,7 @@ impl App {
                                 } else {
                                     self.status_message.clear();
                                     self.streaming = true;
-                                    self.agent.submit_user_message(&content);
+                                    self.agent.submit_user_message(&content, &self.model);
                                 }
                             }
                             TUICommand::Exit => return Ok(()),

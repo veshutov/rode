@@ -43,15 +43,15 @@ impl Agent {
         (agent, event_rx)
     }
 
-    pub fn submit_user_message(&mut self, content: &str) {
+    pub fn submit_user_message(&mut self, content: &str, model: &str) {
         {
             let mut conv = self.conversation.lock().unwrap();
             conv.add_user_message(content);
         }
-        self.start_stream();
+        self.start_stream(model);
     }
 
-    fn start_stream(&self) {
+    fn start_stream(&self, model: &str) {
         self.cancelled.store(false, Ordering::SeqCst);
 
         let conversation = self.conversation.clone();
@@ -59,6 +59,7 @@ impl Agent {
         let provider = self.provider.clone();
         let tx = self.event_tx.clone();
         let cancelled = self.cancelled.clone();
+        let model = model.to_owned();
 
         tokio::spawn(async move {
             loop {
@@ -76,11 +77,11 @@ impl Agent {
                 let result = provider
                     .stream_openai_api(
                         &messages,
-                        &registry,
+                        &model,
                         |token| {
                             let _ = tx.send(AgentEvent::Token(token.to_string()));
                         },
-                        &cancelled,
+                        cancelled.clone(),
                     )
                     .await;
 

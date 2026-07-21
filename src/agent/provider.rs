@@ -22,7 +22,6 @@ use uuid::Uuid;
 pub struct LLMProviderConfig {
     api_key: String,
     base_url: String,
-    model: String,
 }
 
 impl LLMProviderConfig {
@@ -32,40 +31,38 @@ impl LLMProviderConfig {
                 .map_err(|_| anyhow::anyhow!("RODE_API_KEY not found in environment"))?,
             base_url: env::var("URL")
                 .map_err(|_| anyhow::anyhow!("URL not found in environment"))?,
-            model: env::var("MODEL")
-                .map_err(|_| anyhow::anyhow!("MODEL not found in environment"))?,
         })
     }
 }
 
 #[derive(Clone)]
 pub struct LLMProvider {
-    config: LLMProviderConfig,
     client: async_openai::Client<async_openai::config::OpenAIConfig>,
+    tool_registry: ToolRegistry,
 }
 
 impl LLMProvider {
-    pub fn new(config: LLMProviderConfig) -> Self {
+    pub fn new(config: LLMProviderConfig, tool_registry: ToolRegistry) -> Self {
         let api_key = config.api_key.clone();
         let base_url = config.base_url.clone();
         Self {
-            config,
             client: async_openai::Client::with_config(
                 async_openai::config::OpenAIConfig::new()
                     .with_api_key(api_key)
                     .with_api_base(base_url),
             ),
+            tool_registry,
         }
     }
 
     pub async fn stream_openai_api(
         &self,
         messages: &[Message],
-        tool_registry: &ToolRegistry,
+        model: &str,
         mut on_token: impl FnMut(&str),
-        cancelled: &Arc<AtomicBool>,
+        cancelled: Arc<AtomicBool>,
     ) -> Result<Message> {
-        let request = build_request(messages, tool_registry, &self.config.model)?;
+        let request = build_request(messages, &self.tool_registry, model)?;
 
         let mut stream = self.client.chat().create_stream(request).await?;
         let mut content = String::new();
