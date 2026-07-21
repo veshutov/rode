@@ -6,7 +6,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use crate::{
     agent::{Agent, AgentEvent},
     message::Conversation,
-    provider::{LLMProvider, LLMProviderConfig},
+    provider::LLMProvider,
     tools::ToolRegistry,
     tui::{TUI, TUICommand},
 };
@@ -17,11 +17,15 @@ pub struct App {
     event_rx: UnboundedReceiver<AgentEvent>,
     streaming: bool,
     current_response: String,
+    status_message: String,
 }
 
 impl App {
-    pub fn new(conversation: Conversation, tool_registry: ToolRegistry) -> Self {
-        let provider = LLMProvider::new(LLMProviderConfig::default());
+    pub fn new(
+        conversation: Conversation,
+        tool_registry: ToolRegistry,
+        provider: LLMProvider,
+    ) -> Self {
         let (agent, event_rx) = Agent::new(conversation, tool_registry, provider);
         Self {
             tui: TUI::new(),
@@ -29,6 +33,7 @@ impl App {
             event_rx,
             streaming: false,
             current_response: String::new(),
+            status_message: String::new(),
         }
     }
 
@@ -44,8 +49,13 @@ impl App {
                 let messages = conversation.get_messages();
 
                 terminal.draw(|frame| {
-                    self.tui
-                        .render(frame, &messages, &self.current_response, self.streaming)
+                    self.tui.render(
+                        frame,
+                        messages,
+                        &self.current_response,
+                        self.streaming,
+                        &self.status_message,
+                    )
                 })?;
             }
 
@@ -54,10 +64,10 @@ impl App {
                     if let Some(tui_command) = self.tui.on_event(&term_event, self.streaming) {
                         match tui_command {
                             TUICommand::Submit(content) => {
-                                if content == "/clear" {
-                                    self.agent.clear();
-                                    self.tui.reset();
+                                if content.starts_with('/') {
+                                    self.handle_slash_command(&content);
                                 } else {
+                                    self.status_message.clear();
                                     self.streaming = true;
                                     self.agent.submit_user_message(&content);
                                 }
@@ -66,8 +76,8 @@ impl App {
                             TUICommand::Cancel => {
                                 if self.streaming {
                                     self.agent.cancel();
-                                    self.streaming = false;
                                     self.current_response.clear();
+                                    self.streaming = false;
                                 }
                             }
                         }
@@ -82,15 +92,30 @@ impl App {
                             self.current_response.clear();
                         }
                         AgentEvent::Finished => {
-                            self.streaming = false;
                             self.current_response.clear();
+                            self.streaming = false;
                         }
-                        AgentEvent::Error => {
-                            self.streaming = false;
+                        AgentEvent::Error(e) => {
                             self.current_response.clear();
+                            self.streaming = false;
+                            self.status_message = e;
                         }
                     }
                 }
+            }
+        }
+    }
+
+    fn handle_slash_command(&mut self, input: &str) {
+        match input {
+            "/clear" => {
+                self.agent.clear();
+                self.tui.reset();
+                self.status_message = "Conversation cleared".to_string();
+            }
+            _ => {
+                self.status_message = format!("Unknown command: /{}", input);
+                self.tui.reset();
             }
         }
     }

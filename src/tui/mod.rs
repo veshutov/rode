@@ -2,8 +2,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Style},
-    text::{Line, Span, Text},
+    text::{Line, Text},
     widgets::{Block, Borders, Paragraph},
 };
 
@@ -157,25 +156,12 @@ impl TUI {
         let chat_area = chunks[0];
         let input_area = chunks[1];
 
-        let mut lines = self.line_builder.build(
+        let lines = self.line_builder.build(
             messages,
             chat_area.width as usize,
             current_response,
             streaming,
         );
-
-        // Prepend status message (e.g. slash command output) at the top
-        if !status_message.is_empty() {
-            let mut status_lines: Vec<Line> = Vec::new();
-            for raw_line in status_message.lines() {
-                status_lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(raw_line, Style::default().fg(Color::Cyan)),
-                ]));
-            }
-            status_lines.push(Line::from(""));
-            lines.splice(0..0, status_lines);
-        }
 
         let scroll = self.scroll.update_scroll(lines.len(), chat_area.height);
         let text = Text::from(lines);

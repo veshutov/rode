@@ -24,22 +24,16 @@ pub struct LLMProviderConfig {
     model: String,
 }
 
-impl Default for LLMProviderConfig {
-    fn default() -> Self {
-        let api_key = env::var("RODE_API_KEY")
-            .map_err(|_| anyhow::anyhow!("RODE_API_KEY not found in environment"))
-            .unwrap();
-        let url = env::var("URL")
-            .map_err(|_| anyhow::anyhow!("URL not found in environment"))
-            .unwrap();
-        let model = env::var("MODEL")
-            .map_err(|_| anyhow::anyhow!("MODEL not found in environment"))
-            .unwrap();
-        Self {
-            api_key,
-            base_url: url,
-            model,
-        }
+impl LLMProviderConfig {
+    pub fn from_env() -> Result<Self> {
+        Ok(Self {
+            api_key: env::var("RODE_API_KEY")
+                .map_err(|_| anyhow::anyhow!("RODE_API_KEY not found in environment"))?,
+            base_url: env::var("URL")
+                .map_err(|_| anyhow::anyhow!("URL not found in environment"))?,
+            model: env::var("MODEL")
+                .map_err(|_| anyhow::anyhow!("MODEL not found in environment"))?,
+        })
     }
 }
 
@@ -76,7 +70,6 @@ impl LLMProvider {
         let mut stream = self.client.chat().create_stream(request).await?;
         let mut content = String::new();
         let mut tool_calls: Vec<ToolCall> = Vec::new();
-        let _current_tool_call: Option<ToolCall> = None;
 
         while let Some(result) = stream.next().await {
             if cancelled.load(Ordering::SeqCst) {

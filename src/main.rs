@@ -3,15 +3,16 @@ use crossterm::{
     ExecutableCommand,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::io::{self, Write};
 
 use crate::app::App;
 use crate::message::Conversation;
+use crate::provider::{LLMProvider, LLMProviderConfig};
 use crate::tools::{
-    ToolRegistry, bash::BashTool, edit_file::EditFileTool, read_file::ReadFileTool,
+    ToolKind, ToolRegistry, bash::BashTool, edit_file::EditFileTool, read_file::ReadFileTool,
     write_file::WriteFileTool,
 };
 
@@ -26,23 +27,30 @@ mod tui;
 async fn main() -> Result<()> {
     dotenv().ok();
 
+    let provider_config = LLMProviderConfig::from_env()?;
+    let provider = LLMProvider::new(provider_config);
+
     let mut tool_registry = ToolRegistry::new();
-    tool_registry.register(std::sync::Arc::new(BashTool));
-    tool_registry.register(std::sync::Arc::new(ReadFileTool));
-    tool_registry.register(std::sync::Arc::new(WriteFileTool));
-    tool_registry.register(std::sync::Arc::new(EditFileTool));
+    tool_registry.register(ToolKind::Bash(BashTool));
+    tool_registry.register(ToolKind::ReadFile(ReadFileTool));
+    tool_registry.register(ToolKind::WriteFile(WriteFileTool));
+    tool_registry.register(ToolKind::EditFile(EditFileTool));
 
     let system_message =
         "You are a coding agent. Project directory = current directory. Respond concisely.";
-    let mut conversation = Conversation::new(system_message.to_string(), 20);
+    let mut conversation = Conversation::new(system_message.to_owned(), usize::MAX);
     conversation.init();
 
-    run(conversation, tool_registry).await?;
+    run(conversation, tool_registry, provider).await?;
 
     Ok(())
 }
 
-pub async fn run(conversation: Conversation, tool_registry: ToolRegistry) -> Result<()> {
+pub async fn run(
+    conversation: Conversation,
+    tool_registry: ToolRegistry,
+    provider: LLMProvider,
+) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     stdout.execute(EnterAlternateScreen)?;
@@ -52,7 +60,7 @@ pub async fn run(conversation: Conversation, tool_registry: ToolRegistry) -> Res
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(conversation, tool_registry);
+    let mut app = App::new(conversation, tool_registry, provider);
     let result = app.run(&mut terminal).await;
 
     disable_raw_mode()?;

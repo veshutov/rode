@@ -12,7 +12,7 @@ pub enum AgentEvent {
     Token(String),
     MessageDone,
     Finished,
-    Error,
+    Error(String),
 }
 
 pub struct Agent {
@@ -85,24 +85,27 @@ impl Agent {
                     Ok(msg) => {
                         let has_tool_calls = !msg.tool_calls.is_empty();
 
-                        // Add assistant message + execute tools (short lock)
+                        // Add assistant message (short lock)
                         {
                             let mut conv = conversation.lock().unwrap();
                             conv.add_assistant_message(&msg.content, msg.tool_calls.clone());
+                        }
 
+                        // Execute tools outside the lock
+                        if has_tool_calls {
                             for tc in &msg.tool_calls {
-                                match registry.execute(tc) {
+                                match registry.execute(tc).await {
                                     Ok(output) => {
+                                        let mut conv = conversation.lock().unwrap();
                                         conv.add_tool_message(&tc.id, &output);
                                     }
                                     Err(e) => {
+                                        let mut conv = conversation.lock().unwrap();
                                         conv.add_tool_message(&tc.id, &format!("Error: {}", e));
                                     }
                                 }
                             }
-                        }
 
-                        if has_tool_calls {
                             // Another round — clear the streaming buffer but keep going
                             let _ = tx.send(AgentEvent::MessageDone);
                             continue;
@@ -110,8 +113,8 @@ impl Agent {
 
                         let _ = tx.send(AgentEvent::Finished);
                     }
-                    Err(_) => {
-                        let _ = tx.send(AgentEvent::Error);
+                    Err(e) => {
+                        let _ = tx.send(AgentEvent::Error(e.to_string()));
                     }
                 }
                 break;
