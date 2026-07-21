@@ -1,5 +1,5 @@
 use crate::{
-    message::{Message, Role},
+    agent::message::{Message, Role},
     tools::{ToolCall, ToolInfo, ToolRegistry},
 };
 use anyhow::Result;

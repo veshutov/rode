@@ -4,9 +4,9 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
+    agent::message::Conversation,
+    agent::provider::LLMProvider,
     agent::{Agent, AgentEvent},
-    message::Conversation,
-    provider::LLMProvider,
     tools::ToolRegistry,
     tui::{TUICommand, Tui},
 };

@@ -8,9 +8,9 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::io::{self, Write};
 
+use crate::agent::message::Conversation;
+use crate::agent::provider::{LLMProvider, LLMProviderConfig};
 use crate::app::App;
-use crate::message::Conversation;
-use crate::provider::{LLMProvider, LLMProviderConfig};
 use crate::tools::{
     ToolRegistry, bash::BashTool, edit_file::EditFileTool, read_file::ReadFileTool,
     write_file::WriteFileTool,
@@ -19,8 +19,6 @@ use std::sync::Arc;
 
 mod agent;
 mod app;
-mod message;
-mod provider;
 mod tools;
 mod tui;
 

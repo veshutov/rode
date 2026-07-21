@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::{
-    message::Message,
+    agent::message::Message,
     tui::{input::InputBuffer, line::MessageLinesBuilder, scroll::Scroll},
 };
 

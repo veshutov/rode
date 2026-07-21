@@ -4,9 +4,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
-use crate::message::{Conversation, Message};
-use crate::provider::LLMProvider;
+use crate::agent::message::{Conversation, Message};
+use crate::agent::provider::LLMProvider;
 use crate::tools::ToolRegistry;
+
+pub mod message;
+pub mod provider;
 
 pub enum AgentEvent {
     Token(String),
