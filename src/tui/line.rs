@@ -13,7 +13,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use uuid::Uuid;
 
 use crate::{
-    agent::message::{Message, Role},
+    agent::session::{Message, Role},
     tui::utils::wrap_hard,
 };
 

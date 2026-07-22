@@ -7,8 +7,9 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::io::{self, Write};
 
-use crate::agent::message::Conversation;
 use crate::agent::provider::LLMProvider;
+use crate::agent::session::Session;
+use crate::agent::store::SessionStore;
 use crate::app::App;
 use crate::config::AppConfig;
 use crate::tools::{
@@ -42,19 +43,30 @@ async fn main() -> Result<()> {
 
     let system_message =
         "You are a coding agent. Project directory = current directory. Respond concisely.";
-    let mut conversation = Conversation::new(system_message.to_owned(), usize::MAX);
-    conversation.init();
 
-    run(conversation, tool_registry, provider, config.model).await?;
+    let session_store = SessionStore::default_store()?;
+    let session = Session::new(system_message.to_owned(), usize::MAX);
+
+    run(
+        session,
+        tool_registry,
+        provider,
+        config.model,
+        system_message.to_owned(),
+        session_store,
+    )
+    .await?;
 
     Ok(())
 }
 
 pub async fn run(
-    conversation: Conversation,
+    session: Session,
     tool_registry: ToolRegistry,
     provider: LLMProvider,
     model: String,
+    system_message: String,
+    session_store: SessionStore,
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -65,8 +77,20 @@ pub async fn run(
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(conversation, tool_registry, provider, model);
+    let mut app = App::new(
+        session,
+        tool_registry,
+        provider,
+        model,
+        system_message,
+        session_store,
+    );
     let result = app.run(&mut terminal).await;
+
+    // Auto-save the session on exit
+    if let Err(e) = app.save_default_session().await {
+        eprintln!("Warning: auto-save failed: {}", e);
+    }
 
     disable_raw_mode()?;
     let stdout = terminal.backend_mut();

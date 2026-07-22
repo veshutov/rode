@@ -4,10 +4,24 @@ pub struct SlashCommand {
 }
 
 pub fn available_commands() -> &'static [SlashCommand] {
-    &[SlashCommand {
-        name: "clear",
-        description: "clear conversation history",
-    }]
+    &[
+        SlashCommand {
+            name: "clear",
+            description: "clear messages",
+        },
+        SlashCommand {
+            name: "save",
+            description: "save session: /save <name>",
+        },
+        SlashCommand {
+            name: "load",
+            description: "load session: /load <name>",
+        },
+        SlashCommand {
+            name: "sessions",
+            description: "list saved sessions",
+        },
+    ]
 }
 
 pub struct CommandPopup {

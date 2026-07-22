@@ -1,8 +1,11 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::tools::ToolCall;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
     User,
@@ -10,7 +13,7 @@ pub enum Role {
     Tool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: Uuid,
     pub role: Role,
@@ -18,26 +21,25 @@ pub struct Message {
     pub tool_calls: Vec<ToolCall>,
     pub tool_call_id: Option<String>,
     pub used_tokens: Option<u32>,
+    pub timestamp: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Conversation {
+pub struct Session {
     system_message: String,
     messages: Vec<Message>,
     max_history: usize,
 }
 
-impl Conversation {
+impl Session {
     pub fn new(system_message: String, max_history: usize) -> Self {
-        Self {
+        let mut session = Self {
             system_message,
             messages: Vec::new(),
             max_history,
-        }
-    }
-
-    pub fn init(&mut self) {
-        self.init_system_prompt();
+        };
+        session.init_system_prompt();
+        session
     }
 
     fn init_system_prompt(&mut self) {
@@ -48,8 +50,8 @@ impl Conversation {
             tool_calls: Vec::new(),
             tool_call_id: None,
             used_tokens: None,
+            timestamp: Utc::now(),
         });
-        self.trim_history();
     }
 
     pub fn add_user_message(&mut self, content: &str) {
@@ -60,6 +62,7 @@ impl Conversation {
             tool_calls: Vec::new(),
             tool_call_id: None,
             used_tokens: None,
+            timestamp: Utc::now(),
         });
         self.trim_history();
     }
@@ -77,6 +80,7 @@ impl Conversation {
             tool_calls: Vec::new(),
             tool_call_id: Some(tool_call_id.to_string()),
             used_tokens: None,
+            timestamp: Utc::now(),
         });
         self.trim_history();
     }
@@ -110,5 +114,44 @@ impl Conversation {
     pub fn clear_messages(&mut self) {
         self.messages.clear();
         self.init_system_prompt();
+    }
+
+    /// Serialize the conversation to a JSONL string (one `SessionEntry` per line).
+    pub fn to_jsonl(&self) -> Result<String, serde_json::Error> {
+        let mut buf = String::new();
+        for msg in &self.messages {
+            let line = serde_json::to_string(&msg)?;
+            buf.push_str(&line);
+            buf.push('\n');
+        }
+        Ok(buf)
+    }
+
+    pub fn from_jsonl(
+        jsonl: &str,
+        default_system_message: &str,
+        max_history: usize,
+    ) -> Result<Self, serde_json::Error> {
+        let mut messages: Vec<Message> = Vec::new();
+
+        for line in jsonl.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let msg: Message = serde_json::from_str(line)?;
+            messages.push(msg);
+        }
+
+        let system_message = messages
+            .iter()
+            .find(|m| matches!(m.role, Role::System))
+            .map(|m| m.content.clone())
+            .unwrap_or_else(|| default_system_message.to_string());
+
+        Ok(Self {
+            system_message,
+            messages,
+            max_history,
+        })
     }
 }

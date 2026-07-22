@@ -1,5 +1,5 @@
 use crate::{
-    agent::message::{Message, Role},
+    agent::session::{Message, Role},
     tools::{ToolCall, ToolInfo, ToolRegistry},
 };
 use anyhow::Result;
@@ -11,6 +11,7 @@ use async_openai::types::chat::{
     ChatCompletionTools, CreateChatCompletionRequest, CreateChatCompletionRequestArgs,
     FunctionCall, FunctionObjectArgs,
 };
+use chrono::Utc;
 use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
@@ -109,6 +110,7 @@ impl LLMProvider {
             tool_calls,
             tool_call_id: None,
             used_tokens: total_tokens,
+            timestamp: Utc::now(),
         })
     }
 }

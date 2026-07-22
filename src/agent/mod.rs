@@ -4,12 +4,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
-use crate::agent::message::{Conversation, Message};
+use crate::agent::session::{Session, Message};
 use crate::agent::provider::LLMProvider;
 use crate::tools::ToolRegistry;
 
-pub mod message;
+pub mod session;
 pub mod provider;
+pub mod store;
 
 pub enum AgentEvent {
     Token(String),
@@ -19,7 +20,7 @@ pub enum AgentEvent {
 }
 
 pub struct Agent {
-    pub conversation: Arc<Mutex<Conversation>>,
+    pub session: Arc<Mutex<Session>>,
     tool_registry: ToolRegistry,
     provider: LLMProvider,
     event_tx: UnboundedSender<AgentEvent>,
@@ -28,13 +29,13 @@ pub struct Agent {
 
 impl Agent {
     pub fn new(
-        conversation: Conversation,
+        session: Session,
         tool_registry: ToolRegistry,
         provider: LLMProvider,
     ) -> (Self, UnboundedReceiver<AgentEvent>) {
         let (event_tx, event_rx) = unbounded_channel::<AgentEvent>();
         let agent = Self {
-            conversation: Arc::new(Mutex::new(conversation)),
+            session: Arc::new(Mutex::new(session)),
             tool_registry,
             provider,
             event_tx,
@@ -45,7 +46,7 @@ impl Agent {
 
     pub fn submit_user_message(&mut self, content: &str, model: &str) {
         {
-            let mut conv = self.conversation.lock().unwrap();
+            let mut conv = self.session.lock().unwrap();
             conv.add_user_message(content);
         }
         self.start_stream(model);
@@ -54,7 +55,7 @@ impl Agent {
     fn start_stream(&self, model: &str) {
         self.cancelled.store(false, Ordering::SeqCst);
 
-        let conversation = self.conversation.clone();
+        let conversation = self.session.clone();
         let registry = self.tool_registry.clone();
         let provider = self.provider.clone();
         let tx = self.event_tx.clone();
@@ -131,7 +132,16 @@ impl Agent {
     }
 
     pub fn clear(&mut self) {
-        let mut conv = self.conversation.lock().unwrap();
+        let mut conv = self.session.lock().unwrap();
         conv.clear_messages();
+    }
+
+    pub fn replace_conversation(&mut self, session: Session) {
+        let mut conv = self.session.lock().unwrap();
+        *conv = session;
+    }
+
+    pub fn conversation_snapshot(&self) -> Session {
+        self.session.lock().unwrap().clone()
     }
 }
